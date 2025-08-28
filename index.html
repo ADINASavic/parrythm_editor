@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<title>Rhythm Chart Editor (Flask)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#151925; --muted:#8892a6; --text:#e7eaf3; --accent:#66d9ef; --ok:#6ee7b7; --warn:#fbbf24; --bad:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
+  header{padding:12px 16px;border-bottom:1px solid #24283b;background:#0b0d12;position:sticky;top:0;z-index:5}
+  header h1{margin:0;font-size:16px;font-weight:700}
+  .wrap{display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px}
+  .card{background:var(--panel);border:1px solid #23283b;border-radius:10px;padding:12px}
+  .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+  .row label{width:110px;color:var(--muted)}
+  input[type="number"], input[type="text"], select{
+    width:100%; background:#0e1220; color:var(--text); border:1px solid #273047; border-radius:8px; padding:8px;
+  }
+  button{background:#1c2337;color:#e9ecf5;border:1px solid #2d3653;border-radius:8px;padding:8px 10px;cursor:pointer}
+  button.primary{background:#163a4a;border-color:#265a6d;color:#dff6ff}
+  button.warn{background:#3a2a13;border-color:#6e4f1a;color:#ffd48a}
+  button.bad{background:#3a1616;border-color:#6e1c1c;color:#ffd2d2}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:80px;gap:6px}
+  .cell{background:#0e1220;border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .cell.active{outline:2px solid var(--accent)}
+  .canvasWrap{display:flex;gap:12px;flex-wrap:wrap}
+  canvas{background:#0b0f1c;border:1px solid #233; border-radius:8px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th,td{border-bottom:1px solid #223049;padding:8px;font-size:13px}
+  th{color:#a5b0c6;text-align:left}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid #2d3653;color:#b9c2d9}
+  .muted{color:var(--muted)}
+  .hint{font-size:12px;color:#9aa4bb;margin-top:4px}
+  .editbar{display:none;gap:8px;align-items:center;margin:10px 0;padding:8px;border-radius:8px;background:#112033;border:1px solid #264463}
+  .editbar.active{display:flex}
+  .editrow{background:rgba(102,217,239,0.06)}
+  .fullrow{grid-column:1 / -1}
+  .wave-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .timebadge{font-variant-numeric:tabular-nums}
+  .sep{width:1px;height:22px;background:#2d3653;margin:0 4px}
+  .mini{width:auto}
+</style>
+</head>
+<body>
+<header><h1>Rhythm Chart Editor (Flask)</h1></header>
+
+<div class="wrap">
+  <!-- 좌측 패널 -->
+  <section class="card">
+    <h3 style="margin:4px 0 8px">Chart</h3>
+    <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"/></div>
+    <div class="row"><label>BPM</label><input id="bpm" type="number" value="120" step="0.01"/></div>
+    <div class="row">
+      <label>Time Mode</label>
+      <select id="timeMode">
+        <option value="Seconds">Seconds</option>
+        <option value="Beats">Beats</option>
+      </select>
+    </div>
+    <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"/></div>
+    <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"/></div>
+
+    <hr style="border:none;border-top:1px solid #26304a;margin:10px 0"/>
+
+    <h3 style="margin:4px 0 8px">Add Note</h3>
+    <div class="row">
+      <label>Type</label>
+      <select id="noteType">
+        <option value="Grid">Grid</option>
+        <option value="CircleTap">CircleTap</option>
+        <option value="Slider">Slider</option>
+      </select>
+    </div>
+
+    <div id="gridInputs">
+      <div class="hint">Click a cell (right ▶). Also can set manually:</div>
+      <div class="row"><label>Cell (c,r)</label><input id="cellCR" type="text" value="1,1"/></div>
+      <div class="row"><label>Time (sec)</label><input id="judgeTimeSec" type="number" step="0.001" value="1.000"/></div>
+      <div class="row"><label>Time (beats)</label><input id="judgeBeat" type="number" step="0.001" value="1.000"/></div>
+      <button id="btnAddGrid" class="primary" onclick="addGrid()">+ Add Grid</button>
+    </div>
+
+    <div id="circleInputs" style="display:none">
+      <div class="hint">Click in the Viewport canvas to set X,Y (0~1)</div>
+      <div class="row"><label>Pos (x,y)</label><input id="circlePos" type="text" value="0.5,0.5"/></div>
+      <div class="row"><label>Time (sec)</label><input id="circleJudgeSec" type="number" step="0.001" value="1.000"/></div>
+      <div class="row"><label>Time (beats)</label><input id="circleJudgeBeat" type="number" step="0.001" value="1.000"/></div>
+      <button id="btnAddCircle" class="primary" onclick="addCircle()">+ Add CircleTap</button>
+    </div>
+
+    <div id="sliderInputs" style="display:none">
+      <div class="hint">Click multiple points in Viewport → <b>Finish Path</b></div>
+      <div class="row"><label>Start (sec)</label><input id="sliderStartSec" type="number" step="0.001" value="2.000"/></div>
+      <div class="row"><label>Start (beats)</label><input id="sliderStartBeat" type="number" step="0.001" value="2.000"/></div>
+      <div class="row"><label>Duration (sec)</label><input id="sliderDurSec" type="number" step="0.001" value="0.800"/></div>
+      <div class="row"><label>Duration (beats)</label><input id="sliderDurBeats" type="number" step="0.001" value="0.800"/></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button onclick="finishPath()">Finish Path</button>
+        <button class="warn" onclick="clearPath()">Clear Path</button>
+        <span class="hint">Path pts: <span id="pathCount">0</span></span>
+      </div>
+      <button id="btnAddSlider" class="primary" onclick="addSlider()">+ Add Slider</button>
+    </div>
+
+    <!-- 편집 모드 컨트롤 바 -->
+    <div id="editBar" class="editbar">
+      <span class="pill">Editing <span id="editLabel" style="font-weight:700"></span></span>
+      <button class="primary" onclick="saveEdit()">✔ Save Changes</button>
+      <button class="warn" onclick="cancelEdit()">✖ Cancel</button>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #26304a;margin:10px 0"/>
+
+    <div class="row" style="gap:6px">
+      <button onclick="downloadJSON()" class="primary">⬇ Download JSON</button>
+      <label class="pill">LevelChart</label>
+    </div>
+    <div class="row" style="gap:6px">
+      <input id="importFile" type="file" accept=".json" onchange="importJSON(event)"/>
+      <button class="warn" onclick="clearAll()">Clear All</button>
+    </div>
+
+    <div class="hint">Export 포맷은 Unity <b>LevelChart</b> ScriptableObject 구조와 호환되도록 설계됨.</div>
+  </section>
+
+  <!-- 우측 작업영역 -->
+  <section class="card">
+    <h3 style="margin:4px 0 12px">Workspace</h3>
+    <div class="canvasWrap">
+      <div>
+        <div class="row" style="margin-top:0"><span class="pill">3×3 Grid</span></div>
+        <div id="grid" class="grid"></div>
+      </div>
+
+      <div>
+        <div class="row" style="margin-top:0;justify-content:space-between">
+          <span class="pill">Viewport (0~1)</span>
+          <span class="muted">Click to set position / slider path</span>
+        </div>
+        <canvas id="view" width="420" height="420"></canvas>
+      </div>
+    </div>
+
+    <h4 style="margin:14px 0 6px">Notes</h4>
+    <table id="notesTable">
+      <thead>
+        <tr>
+          <th>#</th><th>Type</th><th>Data</th><th>Time</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- 파형/재생/박자 눈금 카드 (전체폭) -->
+  <section class="card fullrow">
+    <h3 style="margin:4px 0 12px">Audio Reference (Waveform & Beat Grid)</h3>
+    <div class="wave-toolbar">
+      <input id="audioFile" type="file" accept="audio/*"/>
+      <button id="playBtn" disabled>▶ Play</button>
+      <button id="pauseBtn" disabled>⏸ Pause</button>
+      <span class="pill timebadge">Time: <span id="curTime">0.000</span> / <span id="durTime">0.000</span> s</span>
+      <span class="sep"></span>
+      <label class="mini">Subdivision
+        <select id="subdiv">
+          <option value="4">1/4</option>
+          <option value="8" selected>1/8</option>
+          <option value="16">1/16</option>
+        </select>
+      </label>
+      <label class="mini"><input id="snap" type="checkbox" checked/> Snap</label>
+      <span class="sep"></span>
+      <button id="zoomInBtn" disabled>＋ Zoom</button>
+      <button id="zoomOutBtn" disabled>－ Zoom</button>
+      <button id="fitBtn" disabled>Fit</button>
+      <span class="sep"></span>
+      <label class="mini">Amp
+        <input id="ampScale" type="range" min="0.2" max="1.0" value="0.6" step="0.05"/>
+      </label>
+      <span class="muted">Click: seek/set time • Drag: pan • Ctrl+Wheel: zoom • Wheel: pan</span>
+    </div>
+    <div style="margin-top:8px">
+      <canvas id="wave" height="140" style="width:100%"></canvas>
+      <audio id="audio" style="display:none" preload="metadata" crossorigin="anonymous"></audio>
+    </div>
+    <div class="hint">※ 파형/비트 눈금은 <b>참고용</b>이며, 편집 데이터에는 직접 영향을 주지 않습니다. (단, 파형 클릭/드래그로 “현재 선택한 노트 타입”의 시간값 입력 가능)</div>
+  </section>
+</div>
+
+<script>
+const $ = sel => document.querySelector(sel);
+
+/* ------------------------ 기존 편집기 상태/로직 ------------------------ */
+const gridEl = $("#grid");
+const view = $("#view");
+const ctx = view.getContext("2d");
+
+// Chart state (client-side)
+let chart = {
+  title: "New Chart",
+  bpm: 120.0,
+  timeMode: "Seconds", // or "Beats"
+  startOffset: 0.0,
+  startOffsetBeats: 0.0,
+  notes: [] // NoteEvent[]
+};
+
+let selectedCell = {c:1, r:1};
+let circlePos01 = {x:0.5, y:0.5};
+let pathPts01 = []; // for slider
+let pathFinished = false;
+
+// 편집 상태
+let editIndex = null;   // 편집 중인 notes[]의 인덱스 (null이면 비활성)
+let editType  = null;   // 편집 중 타입 고정
+
+// UI bindings
+$("#title").addEventListener("input", e => chart.title = e.target.value);
+$("#bpm").addEventListener("input", e => { chart.bpm = parseFloat(e.target.value||"0") || 0; drawWave(); });
+$("#timeMode").addEventListener("change", e => { chart.timeMode = e.target.value; drawWave(); });
+$("#startOffsetSec").addEventListener("input", e => { chart.startOffset = parseFloat(e.target.value||"0") || 0; drawWave(); });
+$("#startOffsetBeats").addEventListener("input", e => { chart.startOffsetBeats = parseFloat(e.target.value||"0") || 0; drawWave(); });
+
+$("#noteType").addEventListener("change", e=>{
+  const t = e.target.value;
+  $("#gridInputs").style.display = (t==="Grid") ? "block" : "none";
+  $("#circleInputs").style.display = (t==="CircleTap") ? "block" : "none";
+  $("#sliderInputs").style.display = (t==="Slider") ? "block" : "none";
+  refreshAddButtons();
+});
+
+// Build 3x3 grid UI
+function buildGrid(){
+  gridEl.innerHTML = "";
+  for(let r=0;r<3;r++){
+    for(let c=0;c<3;c++){
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.textContent = `${c},${r}`;
+      cell.addEventListener("click", ()=>{
+        selectedCell = {c,r};
+        $("#cellCR").value = `${c},${r}`;
+        refreshGridActive();
+      });
+      gridEl.appendChild(cell);
+    }
+  }
+  $("#cellCR").value = `${selectedCell.c},${selectedCell.r}`;
+  refreshGridActive();
+}
+function refreshGridActive(){
+  [...gridEl.children].forEach((el,i)=>{
+    const c = i%3, r = Math.floor(i/3);
+    el.classList.toggle("active", c===selectedCell.c && r===selectedCell.r);
+  });
+}
+
+// Viewport draw & interaction
+function drawView(){
+  const w = view.width, h = view.height;
+  ctx.clearRect(0,0,w,h);
+
+  // background grid
+  ctx.strokeStyle = "#1e2744"; ctx.lineWidth = 1;
+  for(let i=1;i<4;i++){
+    const x = i*w/4;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+    const y = i*h/4;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+  }
+
+  // current circle point
+  ctx.fillStyle = "#66d9ef";
+  ctx.beginPath();
+  ctx.arc(circlePos01.x*w, circlePos01.y*h, 5, 0, Math.PI*2);
+  ctx.fill();
+
+  // slider path if exists
+  if(pathPts01.length){
+    ctx.strokeStyle = "#6ee7b7"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pathPts01[0].x*w, pathPts01[0].y*h);
+    for(let i=1;i<pathPts01.length;i++){
+      ctx.lineTo(pathPts01[i].x*w, pathPts01[i].y*h);
+    }
+    ctx.stroke();
+
+    // points
+    ctx.fillStyle = "#6ee7b7";
+    for(const p of pathPts01){
+      ctx.beginPath(); ctx.arc(p.x*w, p.y*h, 4, 0, Math.PI*2); ctx.fill();
+    }
+  }
+}
+view.addEventListener("click",(e)=>{
+  const rect = view.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  const p = {x: clamp(x,0,1), y: clamp(y,0,1)};
+  const t = $("#noteType").value;
+  if(t==="CircleTap"){
+    circlePos01 = p;
+    $("#circlePos").value = `${round(p.x)},${round(p.y)}`;
+  }else if(t==="Slider" && !pathFinished){
+    pathPts01.push(p);
+    $("#pathCount").textContent = String(pathPts01.length);
+  }
+  drawView();
+});
+function finishPath(){ pathFinished = true; }
+function clearPath(){ pathPts01=[]; pathFinished=false; $("#pathCount").textContent="0"; drawView(); }
+
+function round(v){ return Math.round(v*1000)/1000; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+
+// Add note actions
+function addGrid(){
+  if(editIndex!==null) return;
+  const [cStr,rStr] = $("#cellCR").value.split(",");
+  const c = parseInt(cStr||"0"); const r = parseInt(rStr||"0");
+  const judgeTime = parseFloat($("#judgeTimeSec").value||"0") || 0;
+  const judgeBeat = parseFloat($("#judgeBeat").value||"0") || 0;
+
+  chart.notes.push({
+    type:"Grid",
+    cell:{x:c,y:r},
+    judgeTime: judgeTime,
+    judgeBeat: judgeBeat
+  });
+  renderNotes();
+}
+function addCircle(){
+  if(editIndex!==null) return;
+  const judgeTime = parseFloat($("#circleJudgeSec").value||"0") || 0;
+  const judgeBeat = parseFloat($("#circleJudgeBeat").value||"0") || 0;
+  const [xStr,yStr] = $("#circlePos").value.split(",");
+  const x = parseFloat(xStr||"0.5"); const y = parseFloat(yStr||"0.5");
+
+  chart.notes.push({
+    type:"CircleTap",
+    screenPos01:{x:x,y:y},
+    judgeTime: judgeTime,
+    judgeBeat: judgeBeat
+  });
+  renderNotes();
+}
+function addSlider(){
+  if(editIndex!==null) return;
+  if(pathPts01.length<2){ alert("Slider path needs at least 2 points"); return; }
+  const startTime = parseFloat($("#sliderStartSec").value||"0") || 0;
+  const startBeat = parseFloat($("#sliderStartBeat").value||"0") || 0;
+  const durSec    = parseFloat($("#sliderDurSec").value||"0") || 0;
+  const durBeats  = parseFloat($("#sliderDurBeats").value||"0") || 0;
+
+  chart.notes.push({
+    type:"Slider",
+    screenPath01: pathPts01.map(p=>({x:round(p.x), y:round(p.y)})),
+    startTime: startTime,
+    startBeat: startBeat,
+    duration: durSec,
+    durationBeats: durBeats
+  });
+  clearPath();
+  renderNotes();
+}
+
+// 편집 로직
+function startEdit(i){
+  const n = chart.notes[i];
+  editIndex = i;
+  editType = n.type;
+  $("#editLabel").textContent = `${n.type} #${i+1}`;
+  $("#editBar").classList.add("active");
+
+  $("#noteType").value = n.type;
+  $("#noteType").dispatchEvent(new Event("change"));
+
+  if(n.type==="Grid"){
+    selectedCell = {c:n.cell.x, r:n.cell.y};
+    $("#cellCR").value = `${n.cell.x},${n.cell.y}`;
+    $("#judgeTimeSec").value = n.judgeTime ?? 0;
+    $("#judgeBeat").value    = n.judgeBeat ?? 0;
+    refreshGridActive();
+  }else if(n.type==="CircleTap"){
+    circlePos01 = {x:n.screenPos01.x, y:n.screenPos01.y};
+    $("#circlePos").value = `${round(circlePos01.x)},${round(circlePos01.y)}`;
+    $("#circleJudgeSec").value = n.judgeTime ?? 0;
+    $("#circleJudgeBeat").value = n.judgeBeat ?? 0;
+  }else if(n.type==="Slider"){
+    pathPts01 = (n.screenPath01||[]).map(p=>({x:p.x, y:p.y}));
+    $("#pathCount").textContent = String(pathPts01.length);
+    pathFinished = false;
+    $("#sliderStartSec").value = n.startTime ?? 0;
+    $("#sliderStartBeat").value = n.startBeat ?? 0;
+    $("#sliderDurSec").value = n.duration ?? 0;
+    $("#sliderDurBeats").value = n.durationBeats ?? 0;
+  }
+  drawView();
+  renderNotes();
+  refreshAddButtons();
+}
+
+function saveEdit(){
+  if(editIndex===null) return;
+  const idx = editIndex;
+  const t = editType;
+
+  if(t==="Grid"){
+    const [cStr,rStr] = $("#cellCR").value.split(",");
+    const c = parseInt(cStr||"0"); const r = parseInt(rStr||"0");
+    const judgeTime = parseFloat($("#judgeTimeSec").value||"0") || 0;
+    const judgeBeat = parseFloat($("#judgeBeat").value||"0") || 0;
+    chart.notes[idx] = { type:"Grid", cell:{x:c,y:r}, judgeTime, judgeBeat };
+  }else if(t==="CircleTap"){
+    const [xStr,yStr] = $("#circlePos").value.split(",");
+    const x = parseFloat(xStr||"0.5"); const y = parseFloat(yStr||"0.5");
+    const judgeTime = parseFloat($("#circleJudgeSec").value||"0") || 0;
+    const judgeBeat = parseFloat($("#circleJudgeBeat").value||"0") || 0;
+    chart.notes[idx] = { type:"CircleTap", screenPos01:{x:x,y:y}, judgeTime, judgeBeat };
+  }else if(t==="Slider"){
+    if(pathPts01.length<2){
+      if(!confirm("Slider path has less than 2 points.\nKeep previous path? Cancel=수정취소, OK=이전경로 유지")) return;
+      pathPts01 = (chart.notes[idx].screenPath01||[]).map(p=>({x:p.x,y:p.y}));
+    }
+    const startTime = parseFloat($("#sliderStartSec").value||"0") || 0;
+    const startBeat = parseFloat($("#sliderStartBeat").value||"0") || 0;
+    const durSec    = parseFloat($("#sliderDurSec").value||"0") || 0;
+    const durBeats  = parseFloat($("#sliderDurBeats").value||"0") || 0;
+    chart.notes[idx] = {
+      type:"Slider",
+      screenPath01: pathPts01.map(p=>({x:round(p.x), y:round(p.y)})),
+      startTime, startBeat, duration: durSec, durationBeats: durBeats
+    };
+  }
+  cancelEdit(false);
+  renderNotes();
+}
+
+function cancelEdit(resetFields=true){
+  editIndex = null;
+  editType = null;
+  $("#editBar").classList.remove("active");
+  if(resetFields){
+    $("#noteType").value = "Grid";
+    $("#noteType").dispatchEvent(new Event("change"));
+    $("#cellCR").value = "1,1";
+    $("#judgeTimeSec").value = "1.000";
+    $("#judgeBeat").value = "1.000";
+    $("#circlePos").value = "0.5,0.5";
+    $("#circleJudgeSec").value = "1.000";
+    $("#circleJudgeBeat").value = "1.000";
+    $("#sliderStartSec").value = "2.000";
+    $("#sliderStartBeat").value = "2.000";
+    $("#sliderDurSec").value = "0.800";
+    $("#sliderDurBeats").value = "0.800";
+    clearPath();
+    circlePos01 = {x:0.5,y:0.5};
+    selectedCell = {c:1, r:1};
+    refreshGridActive();
+    drawView();
+  }
+  refreshAddButtons();
+  renderNotes();
+}
+
+function refreshAddButtons(){
+  const editing = (editIndex!==null);
+  $("#btnAddGrid").disabled   = editing || $("#noteType").value!=="Grid";
+  $("#btnAddCircle").disabled = editing || $("#noteType").value!=="CircleTap";
+  $("#btnAddSlider").disabled = editing || $("#noteType").value!=="Slider";
+}
+
+// Notes table
+function renderNotes(){
+  chart.title = $("#title").value;
+  chart.bpm = parseFloat($("#bpm").value||"0") || 0;
+  chart.timeMode = $("#timeMode").value;
+  chart.startOffset = parseFloat($("#startOffsetSec").value||"0") || 0;
+  chart.startOffsetBeats = parseFloat($("#startOffsetBeats").value||"0") || 0;
+
+  const tbody = $("#notesTable tbody");
+  tbody.innerHTML = "";
+  chart.notes.forEach((n,i)=>{
+    const tr = document.createElement("tr");
+    if(editIndex===i) tr.classList.add("editrow");
+
+    const tdIdx = `<td class="muted">${i+1}</td>`;
+    const tdType = `<td><span class="pill">${n.type}</span></td>`;
+
+    let data = "";
+    if(n.type==="Grid"){
+      data = `cell=(${n.cell.x},${n.cell.y})`;
+    }else if(n.type==="CircleTap"){
+      data = `pos=(${round(n.screenPos01.x)},${round(n.screenPos01.y)})`;
+    }else if(n.type==="Slider"){
+      data = `pts=${n.screenPath01.length}`;
+    }
+
+    let timeTxt = "";
+    if(n.type==="Slider"){
+      timeTxt = `start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
+    }else{
+      timeTxt = `t=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`;
+    }
+
+    const tdData = `<td>${data}</td>`;
+    const tdTime = `<td class="muted">${timeTxt}</td>`;
+    const tdAct  = `
+      <td style="display:flex;gap:6px">
+        <button onclick="startEdit(${i})">편집</button>
+        <button class="bad" onclick="removeNote(${i})">삭제</button>
+      </td>`;
+    tr.innerHTML = tdIdx + tdType + tdData + tdTime + tdAct;
+    tbody.appendChild(tr);
+  });
+}
+function fmt(v){ return (v===undefined||v===null) ? "-" : (Math.round(v*1000)/1000); }
+function removeNote(i){
+  if(editIndex===i) cancelEdit();
+  chart.notes.splice(i,1);
+  renderNotes();
+}
+
+function clearAll(){
+  cancelEdit();
+  chart.notes = [];
+  renderNotes();
+}
+
+// Export / Import
+function levelChartJSON(){
+  return JSON.stringify({
+    title: chart.title,
+    bpm: chart.bpm,
+    timeMode: chart.timeMode,
+    startOffset: chart.startOffset,
+    startOffsetBeats: chart.startOffsetBeats,
+    notes: chart.notes
+  }, null, 2);
+}
+function downloadJSON(){
+  const blob = new Blob([levelChartJSON()], {type:"application/json;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = (chart.title||"chart") + ".json";
+  document.body.appendChild(a); a.click();
+  URL.revokeObjectURL(url); a.remove();
+}
+function importJSON(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const obj = JSON.parse(reader.result);
+      cancelEdit();
+      chart.title = obj.title || "Imported Chart";
+      chart.bpm = obj.bpm || 120;
+      chart.timeMode = obj.timeMode || "Seconds";
+      chart.startOffset = obj.startOffset || 0;
+      chart.startOffsetBeats = obj.startOffsetBeats || 0;
+      chart.notes = Array.isArray(obj.notes) ? obj.notes : [];
+      $("#title").value = chart.title;
+      $("#bpm").value = chart.bpm;
+      $("#timeMode").value = chart.timeMode;
+      $("#startOffsetSec").value = chart.startOffset;
+      $("#startOffsetBeats").value = chart.startOffsetBeats;
+      renderNotes();
+      drawWave();
+    }catch(err){ alert("JSON 파싱 실패: "+err); }
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+// Init (편집기)
+buildGrid();
+drawView();
+renderNotes();
+refreshAddButtons();
+setInterval(drawView, 100);
+
+/* ------------------------ 파형/재생/비트 눈금 + 줌/팬/스냅 ------------------------ */
+const waveCanvas = $("#wave");
+const wctx = waveCanvas.getContext("2d");
+const audioEl = $("#audio");
+const audioFileInput = $("#audioFile");
+const playBtn = $("#playBtn");
+const pauseBtn = $("#pauseBtn");
+const curTimeEl = $("#curTime");
+const durTimeEl = $("#durTime");
+const subdivSel = $("#subdiv");
+const snapChk = $("#snap");
+const zoomInBtn = $("#zoomInBtn");
+const zoomOutBtn = $("#zoomOutBtn");
+const fitBtn = $("#fitBtn");
+const ampScaleInput = $("#ampScale");
+
+let audioBuffer = null;     // Web Audio AudioBuffer
+let audioURL = null;
+
+let viewStart = 0;          // 현재 파형 보기 구간 [viewStart, viewEnd] in seconds
+let viewEnd = 0;
+let isPanning = false;
+let dragStartX = 0;
+let dragStartView = 0;      // 드래그 시작 시 viewStart 저장
+let ampScale = 0.6;
+
+// 사이즈/리사이즈
+function resizeWaveCanvas(){
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = waveCanvas.clientWidth;
+  const cssH = waveCanvas.clientHeight;
+  waveCanvas.width = Math.max(600, Math.floor(cssW*dpr));
+  waveCanvas.height = Math.floor(cssH*dpr);
+  wctx.setTransform(dpr,0,0,dpr,0,0);
+  drawWave();
+}
+window.addEventListener("resize", resizeWaveCanvas);
+
+// 파일 로드
+audioFileInput.addEventListener("change", async (e)=>{
+  const file = e.target.files?.[0];
+  if(!file) return;
+  if(audioURL){ URL.revokeObjectURL(audioURL); audioURL = null; }
+  audioURL = URL.createObjectURL(file);
+  audioEl.src = audioURL;
+
+  audioEl.onloadedmetadata = ()=>{
+    const d = audioEl.duration||0;
+    durTimeEl.textContent = d.toFixed(3);
+    curTimeEl.textContent = "0.000";
+    playBtn.disabled = false;
+    pauseBtn.disabled = false;
+    zoomInBtn.disabled = false;
+    zoomOutBtn.disabled = false;
+    fitBtn.disabled = false;
+    viewStart = 0; viewEnd = d || 0;
+    drawWave();
+  };
+
+  const arrbuf = await file.arrayBuffer();
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  try{
+    audioBuffer = await ac.decodeAudioData(arrbuf.slice(0));
+  }catch(err){
+    console.warn("decodeAudioData 실패:", err);
+    audioBuffer = null;
+  }
+  resizeWaveCanvas();
+});
+
+playBtn.addEventListener("click", ()=> audioEl.play());
+pauseBtn.addEventListener("click", ()=> audioEl.pause());
+audioEl.addEventListener("timeupdate", ()=>{
+  curTimeEl.textContent = (audioEl.currentTime||0).toFixed(3);
+});
+audioEl.addEventListener("ended", ()=>{});
+
+ampScaleInput.addEventListener("input", (e)=>{
+  ampScale = parseFloat(e.target.value||"0.6") || 0.6;
+  drawWave();
+});
+
+// 뷰 헬퍼
+function getDuration(){
+  return audioEl.duration || (audioBuffer ? audioBuffer.duration : 0) || 0;
+}
+function ensureViewBounds(){
+  const D = getDuration();
+  if(D<=0){ viewStart=0; viewEnd=0; return; }
+  const spanMin = Math.min(0.05*D, 5); // 최소 5초 또는 전체의 5%
+  if(viewEnd - viewStart < spanMin){
+    const center = (viewStart + viewEnd)/2;
+    viewStart = Math.max(0, center - spanMin/2);
+    viewEnd = Math.min(D, center + spanMin/2);
+  }
+  if(viewStart < 0){ viewEnd -= viewStart; viewStart = 0; }
+  if(viewEnd > D){ const over = viewEnd - D; viewStart = Math.max(0, viewStart - over); viewEnd = D; }
+}
+function timeToX(t){
+  const span = (viewEnd - viewStart) || 1;
+  return ((t - viewStart)/span) * waveCanvas.clientWidth;
+}
+function xToTime(xpx){
+  const span = (viewEnd - viewStart) || 1;
+  return viewStart + (xpx / waveCanvas.clientWidth) * span;
+}
+
+// 줌/팬
+function zoomAt(centerT, factor){
+  const D = getDuration(); if(D<=0) return;
+  const span = (viewEnd - viewStart) || D;
+  const newSpan = clamp(span * factor, D*0.01, D); // 1%~100%
+  const leftRatio = (centerT - viewStart) / span;
+  viewStart = centerT - newSpan*leftRatio;
+  viewEnd = viewStart + newSpan;
+  ensureViewBounds();
+  drawWave();
+}
+zoomInBtn.addEventListener("click", ()=>{
+  const center = audioEl.currentTime || (viewStart+viewEnd)/2;
+  zoomAt(center, 0.7);
+});
+zoomOutBtn.addEventListener("click", ()=>{
+  const center = audioEl.currentTime || (viewStart+viewEnd)/2;
+  zoomAt(center, 1.4);
+});
+fitBtn.addEventListener("click", ()=>{
+  const D = getDuration(); viewStart = 0; viewEnd = D; drawWave();
+});
+
+// 마우스 드래그 → 팬 / 드래그 선택 (슬라이더 시간 설정 겸용)
+let dragSelecting = false;
+let dragT0 = 0, dragT1 = 0;
+
+waveCanvas.addEventListener("mousedown",(e)=>{
+  const rect = waveCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const t = xToTime(x);
+  if(e.shiftKey){
+    // 선택 드래그 (슬라이더 구간 만들기)
+    dragSelecting = true;
+    dragT0 = t; dragT1 = t;
+  }else{
+    // 팬
+    isPanning = true;
+    dragStartX = x;
+    dragStartView = viewStart;
+  }
+});
+window.addEventListener("mousemove",(e)=>{
+  if(isPanning){
+    const rect = waveCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const dx = x - dragStartX;
+    const dt = dx * (viewEnd - viewStart) / waveCanvas.clientWidth;
+    viewStart = dragStartView - dt;
+    viewEnd = viewStart + (viewEnd - dragStartView);
+    ensureViewBounds();
+    drawWave();
+  }else if(dragSelecting){
+    const rect = waveCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    dragT1 = xToTime(x);
+    drawWave();
+    // 선택 박스 표시
+    const x0 = timeToX(Math.min(dragT0, dragT1));
+    const x1 = timeToX(Math.max(dragT0, dragT1));
+    wctx.fillStyle = "rgba(102,217,239,0.15)";
+    wctx.fillRect(x0, 0, x1-x0, waveCanvas.clientHeight);
+    wctx.strokeStyle = "#66d9ef";
+    wctx.lineWidth = 1;
+    wctx.strokeRect(x0+0.5, 0.5, x1-x0-1, waveCanvas.clientHeight-1);
+  }
+});
+window.addEventListener("mouseup",(e)=>{
+  if(isPanning){ isPanning=false; }
+  if(dragSelecting){
+    dragSelecting=false;
+    const t0 = Math.min(dragT0, dragT1);
+    const t1 = Math.max(dragT0, dragT1);
+    applyTimeFromWave(t0, t1); // 슬라이더 시간 채우기
+  }
+});
+
+// 휠: 팬 / Ctrl+휠: 줌
+waveCanvas.addEventListener("wheel",(e)=>{
+  const t = xToTime(e.offsetX);
+  if(e.ctrlKey){
+    e.preventDefault();
+    const factor = (e.deltaY < 0) ? 0.9 : 1.1;
+    zoomAt(t, factor);
+  }else{
+    // 수평 팬
+    const dt = (viewEnd - viewStart) * (e.deltaY>0? 0.05 : -0.05);
+    viewStart += dt; viewEnd += dt; ensureViewBounds(); drawWave();
+  }
+},{passive:false});
+
+// 클릭: 시크 + 단일 지점 시간 입력
+waveCanvas.addEventListener("click",(e)=>{
+  if(isPanning || dragSelecting) return; // 드래그 직후 클릭 무시
+  if(!audioEl.duration) return;
+  const rect = waveCanvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left);
+  let t = xToTime(x);
+  // 시크
+  audioEl.currentTime = clamp(t, 0, getDuration());
+  // 노트 시간 입력
+  applyTimeFromWave(t, null);
+  drawWave();
+});
+
+// 파형 그리기
+function drawWave(){
+  const w = waveCanvas.clientWidth;
+  const h = waveCanvas.clientHeight;
+  wctx.clearRect(0,0,w,h);
+  wctx.fillStyle = "#0b0f1c";
+  wctx.fillRect(0,0,w,h);
+
+  // 파형
+  if(audioBuffer){
+    drawPeaksRange(wctx, w, h, audioBuffer, viewStart, viewEnd, ampScale);
+  }else{
+    wctx.fillStyle = "#9aa4bb";
+    wctx.font = "12px system-ui, -apple-system, Segoe UI, sans-serif";
+    wctx.fillText("오디오 파일을 선택하면 파형이 표시됩니다.", 10, h/2);
+  }
+
+  // 초 눈금 + 비트/마디/세분 눈금
+  const bpm = parseFloat($("#bpm").value||"0") || 0;
+  const duration = getDuration();
+  const offsetSec = computeOffsetSeconds();
+  drawTimeGrid(wctx, w, h, viewStart, viewEnd);
+  if(bpm > 0 && duration > 0){
+    const subdiv = parseInt(subdivSel.value||"8");
+    drawBeatGrid(wctx, w, h, viewStart, viewEnd, bpm, offsetSec, subdiv);
+  }
+
+  // 재생 커서
+  if(duration > 0){
+    const t = audioEl.currentTime || 0;
+    if(t >= viewStart && t <= viewEnd){
+      const x = timeToX(t);
+      wctx.strokeStyle = "#ffd48a";
+      wctx.lineWidth = 2;
+      wctx.beginPath();
+      wctx.moveTo(x, 0);
+      wctx.lineTo(x, h);
+      wctx.stroke();
+    }
+  }
+}
+
+// 초 눈금 (뷰 구간 기준)
+function drawTimeGrid(ctx, w, h, vStart, vEnd){
+  const span = vEnd - vStart; if(span<=0) return;
+  ctx.save();
+  // 적당한 간격(1, 2, 5 반복)
+  const targetPx = 80; // 대략 80px 간격
+  const secPerPx = span / w;
+  const rawStep = targetPx * secPerPx;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const candidates = [1,2,5,10];
+  let step = candidates[0]*mag;
+  for(const c of candidates){
+    const s = c*mag;
+    if(s >= rawStep){ step = s; break; }
+  }
+  const textY = 12;
+  const startTick = Math.ceil(vStart/step)*step;
+  for(let s=startTick; s<=vEnd+1e-6; s+=step){
+    const x = timeToX(s);
+    const isMajor = (Math.round((s/step)) % 5 === 0);
+    ctx.strokeStyle = isMajor ? "#2d3653" : "#1e2744";
+    ctx.lineWidth = isMajor ? 1.5 : 1;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+
+    if(isMajor){
+      ctx.fillStyle = "#9aa4bb";
+      ctx.font = "11px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.fillText(`${s.toFixed(0)}s`, Math.max(2, x+2), textY);
+    }
+  }
+  ctx.restore();
+}
+
+// 비트/마디/세분 눈금 (뷰 구간 기준, 4/4 가정)
+function drawBeatGrid(ctx, w, h, vStart, vEnd, bpm, offsetSec, subdiv){
+  ctx.save();
+  const spb = 60 / bpm; // seconds per beat
+  // 첫 비트 인덱스 (뷰의 왼쪽 이전 비트부터)
+  let firstBeatIndex = Math.floor((vStart - offsetSec) / spb) - 1;
+  for(let bi=firstBeatIndex; ; bi++){
+    const t = offsetSec + bi * spb;
+    if(t > vEnd) break;
+
+    if(t >= vStart){
+      const x = timeToX(t);
+      const isBar = (bi % 4 === 0);
+      ctx.strokeStyle = isBar ? "#66d9ef" : "#265a6d";
+      ctx.lineWidth = isBar ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+
+      if(isBar){
+        ctx.fillStyle = "#b9c2d9";
+        ctx.font = "11px system-ui, -apple-system, Segoe UI, sans-serif";
+        ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2, x+2), h-6);
+      }
+    }
+
+    // 세분 (예: subdiv=8이면 1/8박 단위)
+    if(subdiv && subdiv>1){
+      for(let k=1;k<subdiv;k++){
+        const tk = t + (k * spb / subdiv);
+        if(tk < vStart || tk > vEnd) continue;
+        const xk = timeToX(tk);
+        ctx.strokeStyle = "#1e3a4f";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xk, 0); ctx.lineTo(xk, h); ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// offset 초 계산
+function computeOffsetSeconds(){
+  const bpm = parseFloat($("#bpm").value||"0") || 0;
+  const byBeats = $("#timeMode").value === "Beats";
+  if(byBeats && bpm > 0){
+    const beats = parseFloat($("#startOffsetBeats").value||"0") || 0;
+    return beats * (60 / bpm);
+  }
+  return parseFloat($("#startOffsetSec").value||"0") || 0;
+}
+
+// 파형 peak 렌더링 (뷰 구간만, 세로축 스케일)
+function drawPeaksRange(ctx, w, h, buffer, vStart, vEnd, scale){
+  const sr = buffer.sampleRate;
+  const ch0 = buffer.getChannelData(0);
+  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  const iStart = Math.max(0, Math.floor(vStart * sr));
+  const iEnd   = Math.min(ch0.length, Math.ceil(vEnd * sr));
+  if(iEnd <= iStart) return;
+
+  const samples = iEnd - iStart;
+  const samplesPerPixel = Math.max(1, Math.floor(samples / w));
+  const centerY = h/2;
+  ctx.fillStyle = "#6ee7b7";
+
+  for(let x=0; x<w; x++){
+    const start = iStart + x * samplesPerPixel;
+    const end = Math.min(iEnd, start + samplesPerPixel);
+    let min =  1, max = -1;
+
+    for(let i=start; i<end; i++){
+      const a0 = ch0[i];
+      const a1 = ch1 ? ch1[i] : 0;
+      const a = ch1 ? (a0 + a1) * 0.5 : a0;
+      if(a < min) min = a;
+      if(a > max) max = a;
+    }
+    const y1 = centerY + min * centerY * scale;
+    const y2 = centerY + max * centerY * scale;
+    ctx.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+  }
+}
+
+// 스냅
+function snapTime(t){
+  if(!snapChk.checked) return t;
+  const bpm = parseFloat($("#bpm").value||"0") || 0;
+  if(bpm<=0) return t;
+  const subdiv = parseInt(subdivSel.value||"8");
+  const spb = 60 / bpm;
+  const offset = computeOffsetSeconds();
+  const relBeats = (t - offset) / spb; // 비트 기준 상대 위치
+  const snappedBeats = Math.round(relBeats * subdiv) / subdiv;
+  return offset + snappedBeats * spb;
+}
+
+// 파형에서 시간 적용 (클릭: tOnly / 드래그: t0~t1)
+function applyTimeFromWave(t0, t1){
+  const byBeats = $("#timeMode").value === "Beats";
+  const bpm = parseFloat($("#bpm").value||"0") || 0;
+  const spb = bpm>0 ? 60/bpm : 0;
+
+  if(t1===null || t1===undefined){
+    // 단일 지점
+    const t = snapTime(t0);
+    const typ = $("#noteType").value;
+    if(typ==="Grid"){
+      $("#judgeTimeSec").value = t.toFixed(3);
+      if(byBeats && spb>0) $("#judgeBeat").value = (t/spb).toFixed(3);
+    }else if(typ==="CircleTap"){
+      $("#circleJudgeSec").value = t.toFixed(3);
+      if(byBeats && spb>0) $("#circleJudgeBeat").value = (t/spb).toFixed(3);
+    }else if(typ==="Slider"){
+      // 시작만
+      $("#sliderStartSec").value = t.toFixed(3);
+      if(byBeats && spb>0) $("#sliderStartBeat").value = (t/spb).toFixed(3);
+    }
+  }else{
+    // 구간 (슬라이더)
+    let a = Math.min(t0,t1), b = Math.max(t0,t1);
+    a = snapTime(a); b = snapTime(b);
+    const dur = Math.max(0, b-a);
+    const typ = $("#noteType").value;
+    if(typ==="Slider"){
+      $("#sliderStartSec").value = a.toFixed(3);
+      $("#sliderDurSec").value = dur.toFixed(3);
+      if(byBeats && spb>0){
+        $("#sliderStartBeat").value = (a/spb).toFixed(3);
+        $("#sliderDurBeats").value  = (dur/spb).toFixed(3);
+      }
+    }else{
+      // 드래그 했지만 슬라이더 타입이 아니면 시작점만 반영
+      applyTimeFromWave(a, null);
+    }
+  }
+}
+
+// 렌더 루프
+function rafLoop(){
+  drawWave();
+  requestAnimationFrame(rafLoop);
+}
+requestAnimationFrame(rafLoop);
+
+// 첫 렌더 사이즈 세팅
+resizeWaveCanvas();
+
+</script>
+</body>
+</html>
