@@ -1,25 +1,21 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8"/>
-<title>Rhythm Chart Editor</title>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta charset="utf-8">
+<title>Rhythm Chart Editor (Full)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  :root{
-    --bg:#0f1115; --panel:#151925; --muted:#8892a6; --text:#e7eaf3; --accent:#66d9ef; --ok:#6ee7b7; --warn:#fbbf24; --bad:#f87171;
-  }
+  :root{--bg:#0f1115;--panel:#171b27;--muted:#8a94aa;--text:#e6e9f2;--accent:#66d9ef;--ok:#6ee7b7;--warn:#fbbf24;--bad:#f87171;--line:#26304a;}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
-  header{padding:12px 16px;border-bottom:1px solid #24283b;background:#0b0d12;position:sticky;top:0;z-index:5}
-  header h1{margin:0;font-size:16px;font-weight:700}
-  .wrap{display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px}
-  .card{background:var(--panel);border:1px solid #23283b;border-radius:10px;padding:12px}
+  header{padding:12px 16px;border-bottom:1px solid var(--line);background:#0b0d12;position:sticky;top:0;z-index:5}
+  header h1{margin:0;font-size:16px}
+  .wrap{display:grid;grid-template-columns:340px 1fr;gap:12px;padding:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
   .row{display:flex;gap:8px;align-items:center;margin:6px 0}
-  .row label{width:110px;color:var(--muted)}
-  input[type="number"], input[type="text"], select{
-    width:100%; background:#0e1220; color:var(--text); border:1px solid #273047; border-radius:8px; padding:8px;
-  }
-  button{background:#1c2337;color:#e9ecf5;border:1px solid #2d3653;border-radius:8px;padding:8px 10px;cursor:pointer}
+  .row label{width:130px;color:var(--muted)}
+  input[type="number"],input[type="text"],select{width:100%;background:#0e1220;color:var(--text);border:1px solid #273047;border-radius:8px;padding:8px}
+  button{background:#1b2235;color:#e9ecf5;border:1px solid #2d3653;border-radius:8px;padding:8px 10px;cursor:pointer}
   button.primary{background:#163a4a;border-color:#265a6d;color:#dff6ff}
   button.warn{background:#3a2a13;border-color:#6e4f1a;color:#ffd48a}
   button.bad{background:#3a1616;border-color:#6e1c1c;color:#ffd2d2}
@@ -28,117 +24,179 @@
   .cell{background:#0e1220;border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .cell.active{outline:2px solid var(--accent)}
   .canvasWrap{display:flex;gap:12px;flex-wrap:wrap}
-  canvas{background:#0b0f1c;border:1px solid #233; border-radius:8px}
+  canvas{background:#0b0f1c;border:1px solid #233;border-radius:8px}
   table{width:100%;border-collapse:collapse;margin-top:8px}
-  th,td{border-bottom:1px solid #223049;padding:8px;font-size:13px}
+  th,td{border-bottom:1px solid var(--line);padding:8px;font-size:13px}
   th{color:#a5b0c6;text-align:left}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid #2d3653;color:#b9c2d9}
   .muted{color:var(--muted)}
   .hint{font-size:12px;color:#9aa4bb;margin-top:4px}
   .editbar{display:none;gap:8px;align-items:center;margin:10px 0;padding:8px;border-radius:8px;background:#112033;border:1px solid #264463}
   .editbar.active{display:flex}
-  .editrow{background:rgba(102,217,239,0.06)}
+  .editrow{background:rgba(102,217,239,0.08)}
   .fullrow{grid-column:1 / -1}
   .wave-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .timebadge{font-variant-numeric:tabular-nums}
   .sep{width:1px;height:22px;background:#2d3653;margin:0 4px}
   .mini{width:auto}
+  #orderToolbar{gap:8px;align-items:center;margin:6px 0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 </style>
 </head>
 <body>
 <header><h1>Rhythm Chart Editor</h1></header>
 
 <div class="wrap">
-  <!-- 좌측 패널 -->
+  <!-- 왼쪽 패널 -->
   <section class="card">
     <h3 style="margin:4px 0 8px">Chart</h3>
-    <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"/></div>
-    <div class="row"><label>BPM</label><input id="bpm" type="number" value="120" step="0.01"/></div>
-    <div class="row">
-      <label>Time Mode</label>
-      <select id="timeMode">
-        <option value="Seconds">Seconds</option>
-        <option value="Beats">Beats</option>
-      </select>
+    <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"></div>
+    <div class="row"><label>BPM</label><input id="bpm" type="number" value="120" step="0.01"></div>
+    <div class="row"><label>Time Mode</label>
+      <select id="timeMode"><option value="Seconds">Seconds</option><option value="Beats">Beats</option></select>
     </div>
-    <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"/></div>
-    <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"/></div>
+    <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"></div>
+    <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"></div>
 
-    <hr style="border:none;border-top:1px solid #26304a;margin:10px 0"/>
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <h3 style="margin:4px 0 8px">Spawn Calc Settings</h3>
+    <div class="row"><label>Circle Lead (s)</label><input id="circleLead" type="number" step="0.001" value="1.2"></div>
+    <div class="row"><label>Slider Lead (s)</label><input id="sliderLead" type="number" step="0.001" value="1.0"></div>
+    <div class="row"><label>Grid Target Size</label><input id="gridTarget" type="number" step="0.001" value="2.0"></div>
+    <div class="row"><label>Grid Grow Speed</label><input id="gridGrow" type="number" step="0.001" value="2.0"></div>
+    <div class="hint">Grid spawn = judge - (targetSize / growSpeed), Circle = judge - circleLead, Slider = start - sliderLead</div>
 
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
     <h3 style="margin:4px 0 8px">Add/Edit Note</h3>
-    <div class="row">
-      <label>Type</label>
+    <div class="row"><label>Type</label>
       <select id="noteType">
         <option value="Grid">Grid</option>
         <option value="CircleTap">CircleTap</option>
         <option value="Slider">Slider</option>
+        <option value="Bullet">Bullet</option>
       </select>
     </div>
 
+    <!-- Grid -->
     <div id="gridInputs">
-      <div class="hint">Click a cell (right ▶). Also can set manually:</div>
-      <div class="row"><label>Cell (c,r)</label><input id="cellCR" type="text" value="1,1"/></div>
-      <div class="row"><label>Time (sec)</label><input id="judgeTimeSec" type="number" step="0.001" value="1.000"/></div>
-      <div class="row"><label>Time (beats)</label><input id="judgeBeat" type="number" step="0.001" value="1.000"/></div>
-      <button id="btnAddGrid" class="primary" onclick="addGrid()">+ Add Grid</button>
+      <div class="hint">오른쪽 3x3 Grid를 클릭해도 설정됩니다.</div>
+      <div class="row"><label>Cell (c,r)</label><input id="cellCR" type="text" value="1,1"></div>
+      <div class="row"><label>Time (sec)</label><input id="judgeTimeSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>Time (beats)</label><input id="judgeBeat" type="number" step="0.001" value="1.000"></div>
+      <button id="btnAddGrid" class="primary" onclick="addGrid()">Add Grid</button>
     </div>
 
+    <!-- Circle -->
     <div id="circleInputs" style="display:none">
-      <div class="hint">Click in the Viewport canvas to set X,Y (0~1)</div>
-      <div class="row"><label>Pos (x,y)</label><input id="circlePos" type="text" value="0.5,0.5"/></div>
-      <div class="row"><label>Time (sec)</label><input id="circleJudgeSec" type="number" step="0.001" value="1.000"/></div>
-      <div class="row"><label>Time (beats)</label><input id="circleJudgeBeat" type="number" step="0.001" value="1.000"/></div>
-      <button id="btnAddCircle" class="primary" onclick="addCircle()">+ Add CircleTap</button>
+      <div class="hint">Viewport 캔버스를 클릭해 좌표를 잡을 수 있습니다.</div>
+      <div class="row"><label>Pos (x,y)</label><input id="circlePos" type="text" value="0.5,0.5"></div>
+      <div class="row"><label>Time (sec)</label><input id="circleJudgeSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>Time (beats)</label><input id="circleJudgeBeat" type="number" step="0.001" value="1.000"></div>
+      <button id="btnAddCircle" class="primary" onclick="addCircle()">Add CircleTap</button>
     </div>
 
+    <!-- Slider -->
     <div id="sliderInputs" style="display:none">
-      <div class="hint">Click multiple points in Viewport → <b>Finish Path</b></div>
-      <div class="row"><label>Start (sec)</label><input id="sliderStartSec" type="number" step="0.001" value="2.000"/></div>
-      <div class="row"><label>Start (beats)</label><input id="sliderStartBeat" type="number" step="0.001" value="2.000"/></div>
-      <div class="row"><label>Duration (sec)</label><input id="sliderDurSec" type="number" step="0.001" value="0.800"/></div>
-      <div class="row"><label>Duration (beats)</label><input id="sliderDurBeats" type="number" step="0.001" value="0.800"/></div>
+      <div class="hint">Viewport에서 점을 찍어 경로를 만듭니다. 숫자로도 수정 가능.</div>
+      <div class="row"><label>Start (sec)</label><input id="sliderStartSec" type="number" step="0.001" value="2.000"></div>
+      <div class="row"><label>Start (beats)</label><input id="sliderStartBeat" type="number" step="0.001" value="2.000"></div>
+      <div class="row"><label>Duration (sec)</label><input id="sliderDurSec" type="number" step="0.001" value="0.800"></div>
+      <div class="row"><label>Duration (beats)</label><input id="sliderDurBeats" type="number" step="0.001" value="0.800"></div>
+      <div class="row two">
+        <div><label>Point Index</label><input id="ptIndex" type="number" value="0" step="1"></div>
+        <div><label>Point (x,y)</label><input id="ptXY" type="text" value="0.5,0.5"></div>
+      </div>
       <div class="row" style="gap:6px;flex-wrap:wrap">
         <button onclick="finishPath()">Finish Path</button>
         <button class="warn" onclick="clearPath()">Clear Path</button>
+        <button onclick="applyPointXY()">Set Point XY</button>
+        <button onclick="insertPointAfter()">Insert After</button>
+        <button class="bad" onclick="removePoint()">Remove Point</button>
         <span class="hint">Path pts: <span id="pathCount">0</span></span>
+        <!-- ▼ 인덱스 리스트/네비게이션 UI 추가 -->
+        <div class="row" style="align-items:flex-start">
+        <label>Points</label>
+        <div style="flex:1">
+            <div id="sliderPointList"
+                style="max-height:160px;overflow:auto;border:1px solid #2d3653;border-radius:8px;padding:6px;font-size:12px"></div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+            <button type="button" id="ptPrevBtn">Prev (PgUp)</button>
+            <button type="button" id="ptNextBtn">Next (PgDn)</button>
+            <span class="muted" style="margin-left:auto">Keys: ← → ↑ ↓ (Shift=0.05), PgUp/PgDn, Enter=Apply</span>
+            </div>
+        </div>
+        </div>
+
       </div>
-      <button id="btnAddSlider" class="primary" onclick="addSlider()">+ Add Slider</button>
+      <div class="hint">키보드: Arrow = 선택 점 미세이동 (Shift = 0.05, 기본 = 0.01)</div>
+      <button id="btnAddSlider" class="primary" onclick="addSlider()">Add Slider</button>
     </div>
 
-    <!-- 편집 모드 컨트롤 바 -->
+    <!-- Bullet -->
+    <div id="bulletInputs" style="display:none">
+      <div class="row"><label>Spawn (x,y)</label><input id="bulletSpawn" type="text" value="0.1,0.5"></div>
+      <div class="row"><label>Dock (x,y)</label><input id="bulletDock" type="text" value="0.5,0.5"></div>
+      <div class="row"><label>Despawn (x,y)</label><input id="bulletDespawn" type="text" value="0.9,0.5"></div>
+      <div class="row"><label>Start (sec)</label><input id="bulletStartSec" type="number" step="0.001" value="3.000"></div>
+      <div class="row"><label>Start (beats)</label><input id="bulletStartBeat" type="number" step="0.001" value="3.000"></div>
+      <div class="row"><label>ToDock (sec)</label><input id="bulletToDockSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>ToDock (beats)</label><input id="bulletToDockBeats" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>DockToDespawn (sec)</label><input id="bulletDockToDespawnSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>DockToDespawn (beats)</label><input id="bulletDockToDespawnBeats" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>Viewport click target</label>
+        <select id="bulletClickTarget">
+          <option value="spawn">Spawn</option>
+          <option value="dock">Dock</option>
+          <option value="despawn">Despawn</option>
+        </select>
+      </div>
+      <div class="row">
+        <label class="mini">
+          <input id="bullet3Click" type="checkbox" checked>
+          3-Click 배치 (Spawn→Dock→Despawn)
+        </label>
+        <label class="mini" style="margin-left:12px">
+          <input id="bulletAutoAdd" type="checkbox">
+          3점 완료 시 자동 Add
+        </label>
+      </div>
+      <div class="hint">
+        <span id="bulletStageLabel">Stage: Spawn을 클릭하세요</span>
+      </div>
+      <button id="btnAddBullet" class="primary" onclick="addBullet()">Add Bullet</button>
+      <div class="hint">Viewport 클릭으로 선택된 target 좌표를 바로 세팅할 수 있습니다.</div>
+    </div>
+
+    <!-- 편집 바 -->
     <div id="editBar" class="editbar">
       <span class="pill">Editing <span id="editLabel" style="font-weight:700"></span></span>
-      <button class="primary" onclick="saveEdit()">✔ Save Changes</button>
-      <button class="warn" onclick="cancelEdit()">✖ Cancel</button>
+      <button class="primary" onclick="saveEdit()">Save</button>
+      <button class="warn" onclick="cancelEdit()">Cancel</button>
     </div>
 
-    <hr style="border:none;border-top:1px solid #26304a;margin:10px 0"/>
-
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
     <div class="row" style="gap:6px">
-      <button onclick="downloadJSON()" class="primary">⬇ Download JSON</button>
+      <button onclick="downloadJSON()" class="primary">Download JSON</button>
       <label class="pill">LevelChart</label>
     </div>
     <div class="row" style="gap:6px">
-      <input id="importFile" type="file" accept=".json"/>
-      <button class="warn" onclick="clearAll()">Clear All</button>
+      <input id="importFile" type="file" accept=".json">
+      <button class="bad" onclick="clearAll()">Clear All</button>
     </div>
-
-    <div class="hint">Export 포맷은 Unity <b>LevelChart</b> ScriptableObject 구조와 호환되도록 설계됨.</div>
   </section>
 
-  <!-- 우측 작업영역 -->
+  <!-- 오른쪽 작업영역 -->
   <section class="card">
     <h3 style="margin:4px 0 12px">Workspace</h3>
     <div class="canvasWrap">
       <div>
-        <div class="row" style="margin-top:0"><span class="pill">3×3 Grid</span></div>
+        <div class="row" style="margin-top:0"><span class="pill">3x3 Grid</span></div>
         <div id="grid" class="grid"></div>
       </div>
 
-      <div style="min-width:440px">
+      <div style="min-width:460px">
         <div class="row" style="margin-top:0;justify-content:space-between;align-items:center">
-          <span class="pill">Viewport (<span id="aspectLabel">1:1</span>, 0~1)</span>
+          <span class="pill">Viewport (0..1)</span>
           <div style="display:flex;gap:8px;align-items:center">
             <label class="mini">Aspect
               <select id="aspect">
@@ -146,31 +204,41 @@
                 <option value="1.7777777778">16:9</option>
               </select>
             </label>
-            <span class="muted">Click to set position / slider path</span>
+            <span class="muted">Click: set pos / path / bullet point</span>
           </div>
         </div>
-        <canvas id="view" width="420" height="420"></canvas>
+        <canvas id="view" width="440" height="440"></canvas>
       </div>
     </div>
 
-    <h4 style="margin:14px 0 6px">Notes</h4>
+    <div class="row" id="orderToolbar">
+      <span class="pill">Order</span>
+      <button onclick="sortByCreation()">By Creation</button>
+      <button onclick="sortByTimeSec()">By Time (sec)</button>
+      <button onclick="sortByTimeBeats()">By Time (beats)</button>
+      <button onclick="sortBySpawn()">By Spawn</button>
+      <button class="primary" onclick="reindexNotes()">Reindex</button>
+      <span class="muted">Tip: drag table rows to reorder</span>
+    </div>
+
+    <h4 style="margin:8px 0 6px">Notes</h4>
     <table id="notesTable">
       <thead>
         <tr>
-          <th>#</th><th>Type</th><th>Data</th><th>Time</th><th></th>
+          <th>#</th><th>Type</th><th>Data</th><th>Time</th><th>Spawn(s)</th><th></th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
   </section>
 
-  <!-- 파형/재생/박자 눈금 카드 (전체폭) -->
+  <!-- 파형/재생/박자 -->
   <section class="card fullrow">
     <h3 style="margin:4px 0 12px">Audio Reference (Waveform & Beat Grid)</h3>
     <div class="wave-toolbar">
-      <input id="audioFile" type="file" accept="audio/*"/>
-      <button id="playBtn" disabled>▶ Play</button>
-      <button id="pauseBtn" disabled>⏸ Pause</button>
+      <input id="audioFile" type="file" accept="audio/*">
+      <button id="playBtn" disabled>Play</button>
+      <button id="pauseBtn" disabled>Pause</button>
       <span class="pill timebadge">Time: <span id="curTime">0.000</span> / <span id="durTime">0.000</span> s</span>
       <span class="pill timebadge">Beat: <span id="curBeat">-</span></span>
       <span class="sep"></span>
@@ -181,964 +249,576 @@
           <option value="16">1/16</option>
         </select>
       </label>
-      <label class="mini"><input id="snap" type="checkbox" checked/> Snap</label>
+      <label class="mini"><input id="snap" type="checkbox" checked> Snap</label>
       <span class="sep"></span>
-      <button id="zoomInBtn" disabled>＋ Zoom</button>
-      <button id="zoomOutBtn" disabled>－ Zoom</button>
+      <button id="zoomInBtn" disabled>Zoom+</button>
+      <button id="zoomOutBtn" disabled>Zoom-</button>
       <button id="fitBtn" disabled>Fit</button>
       <span class="sep"></span>
-      <label class="mini">Amp
-        <input id="ampScale" type="range" min="0.2" max="1.0" value="0.6" step="0.05"/>
-      </label>
-      <span class="muted">Click: seek/set time • Drag: pan • Shift+Drag: select • Ctrl+Wheel: zoom • Wheel: pan</span>
+      <label class="mini">Amp <input id="ampScale" type="range" min="0.2" max="1.0" value="0.6" step="0.05"></label>
+      <span class="muted">Click: seek/set time / Drag: pan / Shift+Drag: select / Ctrl+Wheel: zoom</span>
     </div>
     <div style="margin-top:8px">
       <canvas id="wave" height="140" style="width:100%"></canvas>
       <audio id="audio" style="display:none" preload="metadata" crossorigin="anonymous"></audio>
     </div>
-    <div class="hint">※ 파형/비트 눈금은 <b>참고용</b>이며, 편집 데이터에는 직접 영향을 주지 않습니다. (단, 파형 클릭/드래그로 “현재 선택한 노트 타입”의 시간값 입력 가능)</div>
   </section>
 </div>
 
 <script>
-const $ = sel => document.querySelector(sel);
+const $ = s => document.querySelector(s);
 
-/* ------------------------ 편집기 상태 ------------------------ */
-const gridEl = $("#grid");
-const view = $("#view");
-const ctx = view.getContext("2d");
-
-// Chart state
+/* ---------- 상태 ---------- */
 let chart = {
-  title: "New Chart",
-  bpm: 120.0,
-  timeMode: "Seconds", // or "Beats"
-  startOffset: 0.0,
-  startOffsetBeats: 0.0,
-  notes: []
+  title:"New Chart", bpm:120, timeMode:"Seconds",
+  startOffset:0, startOffsetBeats:0,
+  notes:[]
 };
-
-let selectedCell = {c:1, r:1};
-let circlePos01 = {x:0.5, y:0.5};
-let pathPts01 = []; // for slider drawing
-let pathFinished = false;
-
-// Edit state
-let editIndex = null;
-let editType  = null;
-
-// Aspect state (1:1 or 16:9)
+let selectedCell = {c:1,r:1};
+let circlePos01 = {x:0.5,y:0.5};
+let pathPts01 = []; let pathFinished = false;
+let editIndex = null; let editType = null;
 let aspect = 1;
-const aspectSel = $("#aspect");
-const aspectLabel = $("#aspectLabel");
-aspectSel.addEventListener("change", e=>{
-  aspect = parseFloat(e.target.value);
-  aspectLabel.textContent = (Math.abs(aspect-1)<1e-6) ? "1:1" : "16:9";
-  drawView();
-});
+// Bullet 3-Click 상태
+let bulletStage = 0; // 0:spawn, 1:dock, 2:despawn
+let bulletTemp = { spawn:null, dock:null, despawn:null };
 
-// Header bindings
-$("#title").addEventListener("input", e => chart.title = e.target.value);
-$("#bpm").addEventListener("input", e => { 
-  chart.bpm = parseFloat(e.target.value||"0") || 0; 
-  const bi = beatInfoAt(audioEl.currentTime||0);
-  curBeatEl.textContent = bi.valid ? bi.text : "-";
-  drawWave(); 
-});
-$("#timeMode").addEventListener("change", e => { 
-  chart.timeMode = e.target.value; 
-  const bi = beatInfoAt(audioEl.currentTime||0);
-  curBeatEl.textContent = bi.valid ? bi.text : "-";
-  drawWave(); 
-});
-$("#startOffsetSec").addEventListener("input", e => { 
-  chart.startOffset = parseFloat(e.target.value||"0") || 0; 
-  const bi = beatInfoAt(audioEl.currentTime||0);
-  curBeatEl.textContent = bi.valid ? bi.text : "-";
-  drawWave(); 
-});
-$("#startOffsetBeats").addEventListener("input", e => { 
-  chart.startOffsetBeats = parseFloat(e.target.value||"0") || 0; 
-  const bi = beatInfoAt(audioEl.currentTime||0);
-  curBeatEl.textContent = bi.valid ? bi.text : "-";
-  drawWave(); 
-});
-// Note type switch
+/* ---------- 좌측 입력 바인딩 ---------- */
+$("#title").addEventListener("input", e=> chart.title = e.target.value );
+$("#bpm").addEventListener("input", e=> { chart.bpm = num(e.target.value); redrawBeat(); });
+$("#timeMode").addEventListener("change", e=> { chart.timeMode = e.target.value; redrawBeat(); });
+$("#startOffsetSec").addEventListener("input", e=> { chart.startOffset = num(e.target.value); redrawBeat(); });
+$("#startOffsetBeats").addEventListener("input", e=> { chart.startOffsetBeats = num(e.target.value); redrawBeat(); });
+
 $("#noteType").addEventListener("change", e=>{
   const t = e.target.value;
-  $("#gridInputs").style.display   = (t==="Grid") ? "block" : "none";
-  $("#circleInputs").style.display = (t==="CircleTap") ? "block" : "none";
-  $("#sliderInputs").style.display = (t==="Slider") ? "block" : "none";
+  $("#gridInputs").style.display   = (t==="Grid") ? "block":"none";
+  $("#circleInputs").style.display = (t==="CircleTap") ? "block":"none";
+  $("#sliderInputs").style.display = (t==="Slider") ? "block":"none";
+  $("#bulletInputs").style.display = (t==="Bullet") ? "block":"none";
   refreshAddButtons();
 });
 
-// Build 3x3 grid
+/* ---------- Grid UI ---------- */
+const gridEl = $("#grid");
 function buildGrid(){
   gridEl.innerHTML = "";
-  for(let ui_r=0; ui_r<3; ui_r++){       // 화면상의 위→아래(0..2)
-    for(let c=0; c<3; c++){
-      const cell = document.createElement("div");
-      cell.className = "cell";
-      const r = 2 - ui_r;                // 저장/표기용 r: 아래=0, 위=2
-      cell.textContent = `${c},${r}`;    // 라벨도 반전값으로
-      cell.addEventListener("click", ()=>{
-        selectedCell = {c, r};           // 선택도 반전 좌표로 저장
+  for(let ui_r=0;ui_r<3;ui_r++){
+    for(let c=0;c<3;c++){
+      const r = 2 - ui_r;
+      const div = document.createElement("div");
+      div.className = "cell";
+      div.textContent = `${c},${r}`;
+      div.addEventListener("click", ()=>{
+        selectedCell = {c,r};
         $("#cellCR").value = `${c},${r}`;
         refreshGridActive();
       });
-      gridEl.appendChild(cell);
+      gridEl.appendChild(div);
     }
   }
-  // 초기 라벨/선택값 동기화 (selectedCell은 아래=0, 위=2 기준)
-  $("#cellCR").value = `${selectedCell.c},${selectedCell.r}`;
+  $("#cellCR").value = "1,1";
   refreshGridActive();
 }
 function refreshGridActive(){
   [...gridEl.children].forEach((el,i)=>{
-    const c = i % 3;
-    const ui_r = Math.floor(i/3);  // 화면상 행(위→아래)
-    const r = 2 - ui_r;            // 아래=0, 위=2로 변환
+    const c = i%3, ui_r = Math.floor(i/3), r = 2-ui_r;
     el.classList.toggle("active", c===selectedCell.c && r===selectedCell.r);
-    // 셀 라벨도 보정(선택 변경 후 라벨이 바뀌지 않도록 재설정)
     el.textContent = `${c},${r}`;
   });
 }
 
-/* ------------------------ Viewport: aspect rect & mapping ------------------------ */
-function getAspectRect(){
-  const w = view.width, h = view.height;
-  const target = aspect; // w/h
-  if (!isFinite(target) || target<=0) return {x:0,y:0,w, h};
-  let cw = Math.min(w, h*target);
-  let ch = cw / target;
-  if (ch > h) { ch = h; cw = ch * target; }
-  const x = (w - cw) / 2;
-  const y = (h - ch) / 2;
-  return {x, y, w:cw, h:ch};
-}
-function toCanvasXY01(p){ // normalized -> canvas px within aspect rect
-  const ar = getAspectRect();
-  return { cx: ar.x + p.x*ar.w, cy: ar.y + p.y*ar.h };
-}
-function fromCanvasXY(mx, my){
-  const ar = getAspectRect();
-  const x01 = clamp((mx - ar.x)/ar.w, 0, 1);
-  // y는 위에서 아래가 아니라 아래에서 위로 오도록 반전
-  const y01 = clamp(1 - (my - ar.y)/ar.h, 0, 1);
-  return {x: x01, y: y01};
-}
+/* ---------- Viewport ---------- */
+const view = $("#view"); const ctx = view.getContext("2d");
+$("#aspect").addEventListener("change", e=>{ aspect = parseFloat(e.target.value)||1; drawView(); });
 
-/* ------------------------ Viewport draw & interaction ------------------------ */
-function drawView(){
-  const w = view.width, h = view.height;
-  ctx.clearRect(0,0,w,h);
+function getAR(){ const w=view.width,h=view.height,t=aspect; let cw=Math.min(w,h*t),ch=cw/t; if(ch>h){ch=h;cw=ch*t} return {x:(w-cw)/2,y:(h-ch)/2,w:cw,h:ch}; }
+function toCX(p){ const ar=getAR(); return {x:ar.x+p.x*ar.w, y:ar.y+(1-p.y)*ar.h}; }
+function fromCX(mx,my){ const ar=getAR(); return {x:clamp((mx-ar.x)/ar.w,0,1), y:clamp(1-(my-ar.y)/ar.h,0,1)}; }
 
-  // backdrop
-  ctx.fillStyle = "#0b0f1c";
-  ctx.fillRect(0,0,w,h);
-
-  // aspect area
-  const ar = getAspectRect();
-  ctx.fillStyle = "#0c1324";
-  ctx.fillRect(ar.x, ar.y, ar.w, ar.h);
-  ctx.strokeStyle = "#233";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(ar.x+0.5, ar.y+0.5, ar.w-1, ar.h-1);
-
-  // grid lines (4x4)
-  ctx.strokeStyle = "#1e2744"; ctx.lineWidth = 1;
-  for(let i=1;i<4;i++){
-    const x = ar.x + i*ar.w/4;
-    ctx.beginPath(); ctx.moveTo(x, ar.y); ctx.lineTo(x, ar.y+ar.h); ctx.stroke();
-    const y = ar.y + i*ar.h/4;
-    ctx.beginPath(); ctx.moveTo(ar.x, y); ctx.lineTo(ar.x+ar.w, y); ctx.stroke();
-  }
-
-  // circle marker
-
-function toCanvasXY01(p){
-  const ar = getAspectRect();
-  return { 
-    cx: ar.x + p.x*ar.w,
-    cy: ar.y + (1-p.y)*ar.h   // 반전
-  }
-}
-
-
-  // slider path
-  if(pathPts01.length){
-    ctx.strokeStyle = "#6ee7b7"; ctx.lineWidth = 2;
-    ctx.beginPath();
-    const p0 = toCanvasXY01(pathPts01[0]); ctx.moveTo(p0.cx, p0.cy);
-    for(let i=1;i<pathPts01.length;i++){
-      const p = toCanvasXY01(pathPts01[i]);
-      ctx.lineTo(p.cx, p.cy);
+view.addEventListener("click", (e)=>{
+  const rect=view.getBoundingClientRect(); const sx=view.width/rect.width, sy=view.height/rect.height;
+  const mx=(e.clientX-rect.left)*sx, my=(e.clientY-rect.top)*sy;
+  const p=fromCX(mx,my);
+  const t=$("#noteType").value;
+  if(t==="CircleTap"){ circlePos01=p; $("#circlePos").value = `${r3(p.x)},${r3(p.y)}`; }
+  else if(t==="Slider" && !pathFinished){ pathPts01.push(p); $("#pathCount").textContent=String(pathPts01.length); }
+  else if(t==="Bullet"){
+    const three = $("#bullet3Click").checked;
+    if(three){
+      if(bulletStage === 0){
+        bulletTemp.spawn = p; $("#bulletSpawn").value = `${r3(p.x)},${r3(p.y)}`; bulletStage = 1;
+      }else if(bulletStage === 1){
+        bulletTemp.dock = p; $("#bulletDock").value = `${r3(p.x)},${r3(p.y)}`; bulletStage = 2;
+      }else{
+        bulletTemp.despawn = p; $("#bulletDespawn").value = `${r3(p.x)},${r3(p.y)}`; bulletStage = 0;
+        if($("#bulletAutoAdd").checked){ addBullet(); bulletTemp = { spawn:null, dock:null, despawn:null }; }
+      }
+      updateBulletStageLabel();
+    }else{
+      const target = $("#bulletClickTarget").value; const s = `${r3(p.x)},${r3(p.y)}`;
+      if(target==="spawn") $("#bulletSpawn").value=s; if(target==="dock") $("#bulletDock").value=s; if(target==="despawn") $("#bulletDespawn").value=s;
     }
-    ctx.stroke();
-
-    ctx.fillStyle = "#6ee7b7";
-    for(const q of pathPts01){
-      const p = toCanvasXY01(q);
-      ctx.beginPath(); ctx.arc(p.cx, p.cy, 4, 0, Math.PI*2); ctx.fill();
-    }
-  }
-}
-view.addEventListener("click",(e)=>{
-  const rect = view.getBoundingClientRect();
-  const scaleX = view.width / rect.width;
-  const scaleY = view.height / rect.height;
-  const mx = (e.clientX - rect.left) * scaleX;
-  const my = (e.clientY - rect.top)  * scaleY;
-
-  const p01 = fromCanvasXY(mx, my);
-  const t = $("#noteType").value;
-  if(t==="CircleTap"){
-    circlePos01 = p01;
-    $("#circlePos").value = `${round(p01.x)},${round(p01.y)}`;
-  }else if(t==="Slider" && !pathFinished){
-    pathPts01.push(p01);
-    $("#pathCount").textContent = String(pathPts01.length);
   }
   drawView();
 });
-function finishPath(){ pathFinished = true; }
+
+function drawView(){
+  const w=view.width,h=view.height; ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#0b0f1c"; ctx.fillRect(0,0,w,h);
+  const ar=getAR(); ctx.fillStyle="#0c1324"; ctx.fillRect(ar.x,ar.y,ar.w,ar.h);
+  ctx.strokeStyle="#233"; ctx.strokeRect(ar.x+0.5,ar.y+0.5,ar.w-1,ar.h-1);
+  // grid lines
+  ctx.strokeStyle="#1e2744"; ctx.lineWidth=1;
+  for(let i=1;i<4;i++){
+    const x=ar.x+i*ar.w/4, y=ar.y+i*ar.h/4;
+    ctx.beginPath();ctx.moveTo(x,ar.y);ctx.lineTo(x,ar.y+ar.h);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ar.x,y);ctx.lineTo(ar.x+ar.w,y);ctx.stroke();
+  }
+  // slider path
+  if(pathPts01.length){
+    ctx.strokeStyle="#6ee7b7"; ctx.lineWidth=2; ctx.beginPath();
+    let p0=toCX(pathPts01[0]); ctx.moveTo(p0.x,p0.y);
+    for(let i=1;i<pathPts01.length;i++){ const p=toCX(pathPts01[i]); ctx.lineTo(p.x,p.y); }
+    ctx.stroke();
+    ctx.fillStyle="#6ee7b7";
+    pathPts01.forEach((q,i)=>{ const p=toCX(q); ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fill(); });
+  }
+  // bullet 3-click preview
+  if($("#noteType").value==="Bullet" && $("#bullet3Click").checked){
+    const pts = [];
+    if(bulletTemp.spawn) pts.push(bulletTemp.spawn);
+    if(bulletTemp.dock) pts.push(bulletTemp.dock);
+    if(bulletTemp.despawn) pts.push(bulletTemp.despawn);
+    if(pts.length){
+      ctx.strokeStyle="#fbbf24"; ctx.lineWidth=2; ctx.beginPath();
+      const p0 = toCX(pts[0]); ctx.moveTo(p0.x,p0.y);
+      for(let i=1;i<pts.length;i++){ const pi = toCX(pts[i]); ctx.lineTo(pi.x,pi.y); }
+      ctx.stroke();
+      ctx.fillStyle="#fbbf24";
+      pts.forEach((q,i)=>{ const pq = toCX(q); ctx.beginPath(); ctx.arc(pq.x,pq.y,4,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle="#ffd48a"; ctx.font = "12px system-ui, Segoe UI, sans-serif"; const label = (i===0?"S":i===1?"Dk":"De"); ctx.fillText(label, pq.x+6, pq.y-6); ctx.fillStyle="#fbbf24"; });
+    }
+  }
+}
+
+/* ---------- Slider path helpers ---------- */
+function finishPath(){ pathFinished=true; }
 function clearPath(){ pathPts01=[]; pathFinished=false; $("#pathCount").textContent="0"; drawView(); }
+function applyPointXY(){
+  const i = Math.max(0, Math.min(pathPts01.length-1, parseInt($("#ptIndex").value||"0")));
+  const [xs,ys] = ($("#ptXY").value||"0.5,0.5").split(",");
+  const x=clamp(parseFloat(xs||"0.5"),0,1), y=clamp(parseFloat(ys||"0.5"),0,1);
+  if(pathPts01.length===0){ pathPts01.push({x,y}); } else { pathPts01[i]={x,y}; }
+  $("#ptIndex").value = String(i); drawView();
+}
+function insertPointAfter(){
+  if(pathPts01.length===0){ applyPointXY(); $("#pathCount").textContent="1"; return; }
+  const i = Math.max(0, Math.min(pathPts01.length-1, parseInt($("#ptIndex").value||"0")));
+  const [xs,ys] = ($("#ptXY").value||"0.5,0.5").split(",");
+  const x=clamp(parseFloat(xs||"0.5"),0,1), y=clamp(parseFloat(ys||"0.5"),0,1);
+  pathPts01.splice(i+1,0,{x,y}); $("#ptIndex").value=String(i+1);
+  $("#pathCount").textContent=String(pathPts01.length); drawView();
+}
+function removePoint(){
+  if(pathPts01.length===0) return;
+  const i = Math.max(0, Math.min(pathPts01.length-1, parseInt($("#ptIndex").value||"0")));
+  pathPts01.splice(i,1);
+  $("#ptIndex").value=String(Math.max(0,i-1));
+  $("#pathCount").textContent=String(pathPts01.length); drawView();
+}
 
-/* ------------------------ Helpers ------------------------ */
-function round(v){ return Math.round(v*1000)/1000; }
-function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+/* ---------- 통합 키다운 핸들러 ---------- */
+window.addEventListener("keydown",(e)=>{
+  // 1) Bullet 3-click: Backspace 되돌리기 (먼저 처리)
+  if($("#noteType").value==="Bullet" && $("#bullet3Click").checked && e.key === "Backspace"){
+    if(bulletStage === 2){ bulletTemp.dock = null; bulletStage = 1; }
+    else if(bulletStage === 1){ bulletTemp.spawn = null; bulletStage = 0; }
+    else if(bulletStage === 0 && bulletTemp.despawn){ bulletTemp.despawn = null; bulletStage = 2; }
+    updateBulletStageLabel();
+    drawView();
+    e.preventDefault();
+    return; // Backspace는 여기서 종료
+  }
 
-/* ------------------------ Add note actions ------------------------ */
+  // 2) Slider: 화살표로 선택 점 미세 이동
+  if($("#noteType").value==="Slider" && pathPts01.length>0){
+    let i = Math.max(0, Math.min(pathPts01.length-1, parseInt($("#ptIndex").value||"0")));
+    let step = e.shiftKey ? 0.05 : 0.01;
+    let p = pathPts01[i];
+    let moved = false;
+    if(e.key==="ArrowLeft"){ p.x=clamp(p.x-step,0,1); moved=true; }
+    if(e.key==="ArrowRight"){ p.x=clamp(p.x+step,0,1); moved=true; }
+    if(e.key==="ArrowUp"){ p.y=clamp(p.y+step,0,1); moved=true; }
+    if(e.key==="ArrowDown"){ p.y=clamp(p.y-step,0,1); moved=true; }
+    if(moved){ $("#ptXY").value = `${r3(p.x)},${r3(p.y)}`; drawView(); e.preventDefault(); }
+  }
+});
+
+function updateBulletStageLabel(){
+  const el = $("#bulletStageLabel"); if(!el) return;
+  const names = ["Spawn", "Dock", "Despawn"];
+  const done = (p)=> p?`(${r3(p.x)},${r3(p.y)})`:"(미정)";
+  const s = bulletStage;
+  el.textContent = `Stage: ${names[s]}을 클릭하세요  |  S${done(bulletTemp.spawn)}  →  Dk${done(bulletTemp.dock)}  →  De${done(bulletTemp.despawn)}`;
+}
+
+/* ---------- Add Note ---------- */
 function addGrid(){
   if(editIndex!==null) return;
-  const [cStr,rStr] = $("#cellCR").value.split(",");
-  const c = parseInt(cStr||"0"); const r = parseInt(rStr||"0");
-  const judgeTime = parseFloat($("#judgeTimeSec").value||"0") || 0;
-  const judgeBeat = parseFloat($("#judgeBeat").value||"0") || 0;
-
-  chart.notes.push({
-    type:"Grid",
-    cell:{x:c,y:r},
-    judgeTime, judgeBeat
-  });
-  renderNotes();
+  const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
+  const c=parseInt(cs||"1"), r=parseInt(rs||"1");
+  const judgeTime=num($("#judgeTimeSec").value), judgeBeat=num($("#judgeBeat").value);
+  pushNote({type:"Grid", cell:{x:c,y:r}, judgeTime, judgeBeat});
 }
 function addCircle(){
   if(editIndex!==null) return;
-  const judgeTime = parseFloat($("#circleJudgeSec").value||"0") || 0;
-  const judgeBeat = parseFloat($("#circleJudgeBeat").value||"0") || 0;
-  const [xStr,yStr] = $("#circlePos").value.split(",");
-  const x = parseFloat(xStr||"0.5"); const y = parseFloat(yStr||"0.5");
-
-  chart.notes.push({
-    type:"CircleTap",
-    screenPos01:{x, y},
-    judgeTime, judgeBeat
-  });
-  renderNotes();
+  const judgeTime=num($("#circleJudgeSec").value), judgeBeat=num($("#circleJudgeBeat").value);
+  const [xs,ys] = ($("#circlePos").value||"0.5,0.5").split(",");
+  const x=parseFloat(xs||"0.5"), y=parseFloat(ys||"0.5");
+  pushNote({type:"CircleTap", screenPos01:{x,y}, judgeTime, judgeBeat});
 }
 function addSlider(){
   if(editIndex!==null) return;
   if(pathPts01.length<2){ alert("Slider path needs at least 2 points"); return; }
-  const startTime = parseFloat($("#sliderStartSec").value||"0") || 0;
-  const startBeat = parseFloat($("#sliderStartBeat").value||"0") || 0;
-  const durSec    = parseFloat($("#sliderDurSec").value||"0") || 0;
-  const durBeats  = parseFloat($("#sliderDurBeats").value||"0") || 0;
-
-  chart.notes.push({
-    type:"Slider",
-    screenPath01: pathPts01.map(p=>({x:round(p.x), y:round(p.y)})),
-    startTime, startBeat, duration: durSec, durationBeats: durBeats
-  });
+  const startTime=num($("#sliderStartSec").value), startBeat=num($("#sliderStartBeat").value);
+  const duration=num($("#sliderDurSec").value), durationBeats=num($("#sliderDurBeats").value);
+  pushNote({type:"Slider", screenPath01: pathPts01.map(p=>({x:r3(p.x),y:r3(p.y)})),
+            startTime, startBeat, duration, durationBeats});
   clearPath();
-  renderNotes();
+}
+function addBullet(){
+  if(editIndex!==null) return;
+  const spawn = parseXY($("#bulletSpawn").value,"0.1,0.5");
+  const dock  = parseXY($("#bulletDock").value,"0.5,0.5");
+  const desp  = parseXY($("#bulletDespawn").value,"0.9,0.5");
+  const startSec=num($("#bulletStartSec").value), startBeat=num($("#bulletStartBeat").value);
+  const toDockSec=num($("#bulletToDockSec").value), toDockBeats=num($("#bulletToDockBeats").value);
+  const dockToDespawnSec=num($("#bulletDockToDespawnSec").value), dockToDespawnBeats=num($("#bulletDockToDespawnBeats").value);
+  pushNote({
+    type:"Bullet",
+    bulletSpawn01:{x:spawn.x, y:spawn.y},
+    bulletDock01:{x:dock.x, y:dock.y},
+    bulletDespawn01:{x:desp.x, y:desp.y},
+    bulletSpawnTime:startSec, bulletSpawnBeat:startBeat,
+    bulletToDockDuration:toDockSec, bulletToDockBeats:toDockBeats,
+    bulletDockToDespawnDuration:dockToDespawnSec, bulletDockToDespawnBeats:dockToDespawnBeats
+  });
+  if($("#bullet3Click").checked){ bulletStage = 0; bulletTemp = { spawn:null, dock:null, despawn:null }; updateBulletStageLabel(); drawView(); }
 }
 
-/* ------------------------ Edit logic ------------------------ */
+function pushNote(obj){ ensureCreatedAt(); obj._id = rid(); obj._createdAt = Date.now(); chart.notes.push(obj); renderNotes(); }
+
+/* ---------- Edit ---------- */
 function startEdit(i){
-  const n = chart.notes[i];
-  editIndex = i; editType = n.type;
-  $("#editLabel").textContent = `${n.type} #${i+1}`;
-  $("#editBar").classList.add("active");
-
-  $("#noteType").value = n.type;
-  $("#noteType").dispatchEvent(new Event("change"));
-
+  const n=chart.notes[i]; editIndex=i; editType=n.type;
+  $("#editLabel").textContent = `${n.type} #${i+1}`; $("#editBar").classList.add("active");
+  $("#noteType").value=n.type; $("#noteType").dispatchEvent(new Event("change"));
   if(n.type==="Grid"){
-    selectedCell = {c:n.cell.x, r:n.cell.y};
-    $("#cellCR").value = `${n.cell.x},${n.cell.y}`;
-    $("#judgeTimeSec").value = n.judgeTime ?? 0;
-    $("#judgeBeat").value    = n.judgeBeat ?? 0;
-    refreshGridActive();
+    selectedCell={c:n.cell.x,r:n.cell.y}; $("#cellCR").value=`${n.cell.x},${n.cell.y}`;
+    $("#judgeTimeSec").value = n.judgeTime??0; $("#judgeBeat").value = n.judgeBeat??0; refreshGridActive();
   }else if(n.type==="CircleTap"){
-    circlePos01 = {x:n.screenPos01.x, y:n.screenPos01.y};
-    $("#circlePos").value = `${round(circlePos01.x)},${round(circlePos01.y)}`;
-    $("#circleJudgeSec").value = n.judgeTime ?? 0;
-    $("#circleJudgeBeat").value = n.judgeBeat ?? 0;
+    $("#circlePos").value = `${r3(n.screenPos01.x)},${r3(n.screenPos01.y)}`;
+    $("#circleJudgeSec").value = n.judgeTime??0; $("#circleJudgeBeat").value = n.judgeBeat??0;
   }else if(n.type==="Slider"){
-    pathPts01 = (n.screenPath01||[]).map(p=>({x:p.x, y:p.y}));
-    $("#pathCount").textContent = String(pathPts01.length);
-    pathFinished = false;
-    $("#sliderStartSec").value = n.startTime ?? 0;
-    $("#sliderStartBeat").value = n.startBeat ?? 0;
-    $("#sliderDurSec").value = n.duration ?? 0;
-    $("#sliderDurBeats").value = n.durationBeats ?? 0;
+    pathPts01 = (n.screenPath01||[]).map(p=>({x:p.x,y:p.y})); $("#pathCount").textContent=String(pathPts01.length); pathFinished=false;
+    $("#sliderStartSec").value=n.startTime??0; $("#sliderStartBeat").value=n.startBeat??0;
+    $("#sliderDurSec").value=n.duration??0; $("#sliderDurBeats").value=n.durationBeats??0;
+  }else if(n.type==="Bullet"){
+    $("#bulletSpawn").value = `${r3(n.bulletSpawn01.x)},${r3(n.bulletSpawn01.y)}`;
+    $("#bulletDock").value  = `${r3(n.bulletDock01.x)},${r3(n.bulletDock01.y)}`;
+    $("#bulletDespawn").value = `${r3(n.bulletDespawn01.x)},${r3(n.bulletDespawn01.y)}`;
+    $("#bulletStartSec").value = n.bulletSpawnTime??0; $("#bulletStartBeat").value = n.bulletSpawnBeat??0;
+    $("#bulletToDockSec").value = n.bulletToDockDuration??0; $("#bulletToDockBeats").value = n.bulletToDockBeats??0;
+    $("#bulletDockToDespawnSec").value = n.bulletDockToDespawnDuration??0; $("#bulletDockToDespawnBeats").value = n.bulletDockToDespawnBeats??0;
   }
-  drawView();
-  renderNotes();
-  refreshAddButtons();
+  drawView(); renderNotes(); refreshAddButtons(); updateBulletStageLabel();
 }
 function saveEdit(){
   if(editIndex===null) return;
-  const idx = editIndex;
-  const t = editType;
-
+  const idx=editIndex, t=editType, prev=chart.notes[idx];
   if(t==="Grid"){
-    const [cStr,rStr] = $("#cellCR").value.split(",");
-    const c = parseInt(cStr||"0"); const r = parseInt(rStr||"0");
-    const judgeTime = parseFloat($("#judgeTimeSec").value||"0") || 0;
-    const judgeBeat = parseFloat($("#judgeBeat").value||"0") || 0;
-    chart.notes[idx] = { type:"Grid", cell:{x:c,y:r}, judgeTime, judgeBeat };
+    const [cs,rs]=($("#cellCR").value||"1,1").split(","); const c=parseInt(cs||"1"), r=parseInt(rs||"1");
+    chart.notes[idx]={...prev,type:"Grid",cell:{x:c,y:r},judgeTime:num($("#judgeTimeSec").value),judgeBeat:num($("#judgeBeat").value)};
   }else if(t==="CircleTap"){
-    const [xStr,yStr] = $("#circlePos").value.split(",");
-    const x = parseFloat(xStr||"0.5"); const y = parseFloat(yStr||"0.5");
-    const judgeTime = parseFloat($("#circleJudgeSec").value||"0") || 0;
-    const judgeBeat = parseFloat($("#circleJudgeBeat").value||"0") || 0;
-    chart.notes[idx] = { type:"CircleTap", screenPos01:{x,y}, judgeTime, judgeBeat };
+    const [xs,ys]=($("#circlePos").value||"0.5,0.5").split(","); const x=parseFloat(xs||"0.5"), y=parseFloat(ys||"0.5");
+    chart.notes[idx]={...prev,type:"CircleTap",screenPos01:{x,y},judgeTime:num($("#circleJudgeSec").value),judgeBeat:num($("#circleJudgeBeat").value)};
   }else if(t==="Slider"){
-    if(pathPts01.length<2){
-      if(!confirm("Slider path has less than 2 points.\nKeep previous path? Cancel=수정취소, OK=이전경로 유지")) return;
-      pathPts01 = (chart.notes[idx].screenPath01||[]).map(p=>({x:p.x,y:p.y}));
-    }
-    const startTime = parseFloat($("#sliderStartSec").value||"0") || 0;
-    const startBeat = parseFloat($("#sliderStartBeat").value||"0") || 0;
-    const durSec    = parseFloat($("#sliderDurSec").value||"0") || 0;
-    const durBeats  = parseFloat($("#sliderDurBeats").value||"0") || 0;
-    chart.notes[idx] = {
-      type:"Slider",
-      screenPath01: pathPts01.map(p=>({x:round(p.x), y:round(p.y)})),
-      startTime, startBeat, duration: durSec, durationBeats: durBeats
+    if(pathPts01.length<2){ alert("Path needs >= 2 points"); return; }
+    chart.notes[idx]={...prev,type:"Slider",screenPath01:pathPts01.map(p=>({x:r3(p.x),y:r3(p.y)})),
+      startTime:num($("#sliderStartSec").value),startBeat:num($("#sliderStartBeat").value),
+      duration:num($("#sliderDurSec").value),durationBeats:num($("#sliderDurBeats").value)};
+  }else if(t==="Bullet"){
+    const spawn=parseXY($("#bulletSpawn").value,"0.1,0.5"), dock=parseXY($("#bulletDock").value,"0.5,0.5"), desp=parseXY($("#bulletDespawn").value,"0.9,0.5");
+    chart.notes[idx]={...prev,type:"Bullet",
+      bulletSpawn01:{x:spawn.x,y:spawn.y}, bulletDock01:{x:dock.x,y:dock.y}, bulletDespawn01:{x:desp.x,y:desp.y},
+      bulletSpawnTime:num($("#bulletStartSec").value), bulletSpawnBeat:num($("#bulletStartBeat").value),
+      bulletToDockDuration:num($("#bulletToDockSec").value), bulletToDockBeats:num($("#bulletToDockBeats").value),
+      bulletDockToDespawnDuration:num($("#bulletDockToDespawnSec").value), bulletDockToDespawnBeats:num($("#bulletDockToDespawnBeats").value)
     };
   }
-  cancelEdit(false);
-  renderNotes();
+  cancelEdit(false); renderNotes();
 }
-function cancelEdit(resetFields=true){
-  editIndex=null; editType=null;
-  $("#editBar").classList.remove("active");
-  if(resetFields){
-    $("#noteType").value = "Grid";
-    $("#noteType").dispatchEvent(new Event("change"));
-    $("#cellCR").value = "1,1";
-    $("#judgeTimeSec").value = "1.000";
-    $("#judgeBeat").value = "1.000";
-    $("#circlePos").value = "0.5,0.5";
-    $("#circleJudgeSec").value = "1.000";
-    $("#circleJudgeBeat").value = "1.000";
-    $("#sliderStartSec").value = "2.000";
-    $("#sliderStartBeat").value = "2.000";
-    $("#sliderDurSec").value = "0.800";
-    $("#sliderDurBeats").value = "0.800";
-    clearPath();
-    circlePos01 = {x:0.5,y:0.5};
-    selectedCell = {c:1, r:1};
-    refreshGridActive();
-    drawView();
+function cancelEdit(reset=true){
+  editIndex=null; editType=null; $("#editBar").classList.remove("active");
+  if(reset){
+    $("#noteType").value="Grid"; $("#noteType").dispatchEvent(new Event("change"));
+    $("#cellCR").value="1,1"; $("#judgeTimeSec").value="1.000"; $("#judgeBeat").value="1.000";
+    $("#circlePos").value="0.5,0.5"; $("#circleJudgeSec").value="1.000"; $("#circleJudgeBeat").value="1.000";
+    $("#sliderStartSec").value="2.000"; $("#sliderStartBeat").value="2.000"; $("#sliderDurSec").value="0.800"; $("#sliderDurBeats").value="0.800";
+    clearPath(); circlePos01={x:0.5,y:0.5}; selectedCell={c:1,r:1}; refreshGridActive(); drawView();
   }
-  refreshAddButtons();
-  renderNotes();
+  refreshAddButtons(); updateBulletStageLabel();
 }
 function refreshAddButtons(){
-  const editing = (editIndex!==null);
+  const editing=(editIndex!==null);
   $("#btnAddGrid").disabled   = editing || $("#noteType").value!=="Grid";
   $("#btnAddCircle").disabled = editing || $("#noteType").value!=="CircleTap";
   $("#btnAddSlider").disabled = editing || $("#noteType").value!=="Slider";
+  $("#btnAddBullet").disabled = editing || $("#noteType").value!=="Bullet";
 }
 
-/* ------------------------ Notes table ------------------------ */
+/* ---------- Notes Table / 정렬 / 드래그 ---------- */
+function ensureCreatedAt(){ let t0=Date.now(); for(let n of chart.notes){ if(n._createdAt==null){ n._createdAt=t0; t0++; } if(n._id==null){ n._id = rid(); } } }
+function rid(){ return (crypto.randomUUID && crypto.randomUUID()) || (Math.random().toString(36).slice(2)+Date.now().toString(36)); }
+
 function renderNotes(){
-  chart.title = $("#title").value;
-  chart.bpm = parseFloat($("#bpm").value||"0") || 0;
-  chart.timeMode = $("#timeMode").value;
-  chart.startOffset = parseFloat($("#startOffsetSec").value||"0") || 0;
-  chart.startOffsetBeats = parseFloat($("#startOffsetBeats").value||"0") || 0;
-
-  const tbody = $("#notesTable tbody");
-  tbody.innerHTML = "";
+  chart.title=$("#title").value; chart.bpm=num($("#bpm").value); chart.timeMode=$("#timeMode").value;
+  chart.startOffset=num($("#startOffsetSec").value); chart.startOffsetBeats=num($("#startOffsetBeats").value);
+  ensureCreatedAt();
+  const tbody=$("#notesTable tbody"); tbody.innerHTML="";
   chart.notes.forEach((n,i)=>{
-    const tr = document.createElement("tr");
-    if(editIndex===i) tr.classList.add("editrow");
-
-    const tdIdx = `<td class="muted">${i+1}</td>`;
-    const tdType = `<td><span class="pill">${n.type}</span></td>`;
-
-    let data = "";
-    if(n.type==="Grid"){
-      data = `cell=(${n.cell.x},${n.cell.y})`;
-    }else if(n.type==="CircleTap"){
-      data = `pos=(${round(n.screenPos01.x)},${round(n.screenPos01.y)})`;
-    }else if(n.type==="Slider"){
-      data = `pts=${n.screenPath01.length}`;
-    }
-
-    let timeTxt = "";
-    if(n.type==="Slider"){
-      timeTxt = `start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
-    }else{
-      timeTxt = `t=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`;
-    }
-
-    const tdData = `<td>${data}</td>`;
-    const tdTime = `<td class="muted">${timeTxt}</td>`;
-    const tdAct  = `
-      <td style="display:flex;gap:6px">
-        <button onclick="startEdit(${i})">편집</button>
-        <button class="bad" onclick="removeNote(${i})">삭제</button>
-      </td>`;
-    tr.innerHTML = tdIdx + tdType + tdData + tdTime + tdAct;
-    tbody.appendChild(tr);
+    const tr=document.createElement("tr"); tr.dataset.index=i; if(editIndex===i) tr.classList.add("editrow");
+    const tdIdx=cel("td","muted",String(i+1));
+    const tdType=cel("td","","<span class=\"pill\">"+n.type+"</span>",true);
+    let data="";
+    if(n.type==="Grid"){ data=`cell=(${n.cell.x},${n.cell.y})`; }
+    else if(n.type==="CircleTap"){ data=`pos=(${r3(n.screenPos01.x)},${r3(n.screenPos01.y)})`; }
+    else if(n.type==="Slider"){ data=`pts=${(n.screenPath01||[]).length}`; }
+    else if(n.type==="Bullet"){ data=`S(${r3(n.bulletSpawn01.x)},${r3(n.bulletSpawn01.y)}) Dk(${r3(n.bulletDock01.x)},${r3(n.bulletDock01.y)}) De(${r3(n.bulletDespawn01.x)},${r3(n.bulletDespawn01.y)})`; }
+    const tdData=cel("td","",data);
+    let timeTxt="";
+    if(n.type==="Slider"){ timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`; }
+    else if(n.type==="Bullet"){ timeTxt=`start=${fmt(n.bulletSpawnTime)}/${fmt(n.bulletSpawnBeat)} | toDock=${fmt(n.bulletToDockDuration)}/${fmt(n.bulletToDockBeats)} | dockToDespawn=${fmt(n.bulletDockToDespawnDuration)}/${fmt(n.bulletDockToDespawnBeats)}`; }
+    else{ timeTxt=`t=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`; }
+    const tdTime=cel("td","muted",timeTxt);
+    const tdSpawn=cel("td","muted","spawn="+fmt(spawnSecOf(n)));
+    const tdAct=document.createElement("td"); tdAct.style.display="flex"; tdAct.style.gap="6px";
+    tdAct.innerHTML = `<button onclick=\"startEdit(${i})\">Edit</button>
+      <button class=\"bad\" onclick=\"removeNote(${i})\">Del</button>
+      <button onclick=\"moveUp(${i})\">Up</button>
+      <button onclick=\"moveDown(${i})\">Down</button>`;
+    tr.appendChild(tdIdx); tr.appendChild(tdType); tr.appendChild(tdData); tr.appendChild(tdTime); tr.appendChild(tdSpawn); tr.appendChild(tdAct);
+    attachRowDragHandlers(tr,i); tbody.appendChild(tr);
   });
 }
-function fmt(v){ return (v===undefined||v===null) ? "-" : (Math.round(v*1000)/1000); }
-function removeNote(i){
-  if(editIndex===i) cancelEdit();
-  chart.notes.splice(i,1);
-  renderNotes();
-}
-function clearAll(){
-  cancelEdit();
-  chart.notes = [];
-  renderNotes();
-}
+function cel(tag,cls,txt,isHTML=false){ const el=document.createElement(tag); if(cls) el.className=cls; if(isHTML) el.innerHTML=txt; else el.textContent=txt; return el; }
+function removeNote(i){ if(editIndex===i) cancelEdit(); chart.notes.splice(i,1); renderNotes(); }
+function moveUp(i){ if(i<=0) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i-1,0,it); renderNotes(); }
+function moveDown(i){ if(i>=chart.notes.length-1) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i+1,0,it); renderNotes(); }
+let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("draggable","true"); tr.addEventListener("dragstart",(e)=>{ dragIndex=idx; tr.style.opacity="0.5"; }); tr.addEventListener("dragend",()=>{ tr.style.opacity=""; dragIndex=null; }); tr.addEventListener("dragover",(e)=>{ e.preventDefault(); }); tr.addEventListener("drop",(e)=>{ e.preventDefault(); const targetIdx=parseInt(tr.dataset.index,10); if(dragIndex===null || dragIndex===targetIdx) return; const item=chart.notes.splice(dragIndex,1)[0]; chart.notes.splice(targetIdx,0,item); renderNotes(); }); }
 
-/* ------------------------ Export / Import ------------------------ */
+/* ---------- 정렬 & 시간 계산 ---------- */
+function spb(){ const bpm = num($("#bpm").value); return bpm>0 ? 60/bpm : 0; }
+function getNoteTimeSec(n){ const S=spb(); const byBeats=$("#timeMode").value==="Beats"; const secFromBeats=(b)=> (isFinite(b)? b*S : null); const pick=(a,b)=> (isFinite(a)&&a>0)?a:(isFinite(b)?b:0); if(n.type==="Slider"){const s=n.startTime,b=n.startBeat;return byBeats?pick(secFromBeats(b),s):pick(s,secFromBeats(b));} if(n.type==="Bullet"){const s=n.bulletSpawnTime,b=n.bulletSpawnBeat;return byBeats?pick(secFromBeats(b),s):pick(s,secFromBeats(b));} const s=n.judgeTime,b=n.judgeBeat;return byBeats?pick(secFromBeats(b),s):pick(s,secFromBeats(b)); }
+function getNoteTimeBeats(n){ const S=spb(); const byBeats=$("#timeMode").value==="Beats"; const beatsFromSec=(s)=> (isFinite(s)? s/(S||1) : null); const pick=(a,b)=> (isFinite(a)&&a>0)?a:(isFinite(b)?b:0); if(n.type==="Slider"){const s=n.startTime,b=n.startBeat;return byBeats?pick(b,beatsFromSec(s)):pick(beatsFromSec(s),b);} if(n.type==="Bullet"){const s=n.bulletSpawnTime,b=n.bulletSpawnBeat;return byBeats?pick(b,beatsFromSec(s)):pick(beatsFromSec(s),b);} const s=n.judgeTime,b=n.judgeBeat;return byBeats?pick(b,beatsFromSec(s)):pick(beatsFromSec(s),b);} 
+function spawnSecOf(n){ const circleLead=num($("#circleLead").value), sliderLead=num($("#sliderLead").value), gridTarget=num($("#gridTarget").value), gridGrow=Math.max(0.0001,num($("#gridGrow").value)), gridLead=gridTarget/gridGrow; if(n.type==="Grid") return getNoteTimeSec(n)-gridLead; if(n.type==="CircleTap") return getNoteTimeSec(n)-circleLead; if(n.type==="Slider") return getNoteTimeSec(n)-sliderLead; if(n.type==="Bullet") return getNoteTimeSec(n); return getNoteTimeSec(n);} 
+function sortByCreation(){ ensureCreatedAt(); chart.notes.sort((a,b)=> (a._createdAt||0)-(b._createdAt||0)); renderNotes(); }
+function sortByTimeSec(){ chart.notes.sort((a,b)=> getNoteTimeSec(a)-getNoteTimeSec(b)); renderNotes(); }
+function sortByTimeBeats(){ chart.notes.sort((a,b)=> getNoteTimeBeats(a)-getNoteTimeBeats(b)); renderNotes(); }
+function sortBySpawn(){ chart.notes.sort((a,b)=> spawnSecOf(a)-spawnSecOf(b)); renderNotes(); }
+function reindexNotes(){ for(let i=0;i<chart.notes.length;i++){ chart.notes[i]._order=i; } renderNotes(); }
 
-// t(초)에서의 비트/마디 정보 계산
-function beatInfoAt(t){
-  const bpm = parseFloat($("#bpm").value||"0") || 0;
-  if(bpm <= 0) return { valid:false, text:"-" };
-  const spb = 60 / bpm;
-  const off = computeOffsetSeconds(); // 기존 함수
-  const beats = (t - off) / spb;      // 오프셋 기준 상대 비트(음수 가능)
-  // 마디/박 (4/4 가정)
-  const barIndex = Math.floor(beats / 4);      // 0부터
-  const inBar = beats - barIndex*4;            // [0,4)
-  const beatNumInBar = Math.floor(inBar) + 1;  // 1..4
-  const frac = inBar - Math.floor(inBar);      // 소수
-  const text = `${beats.toFixed(3)} (M${barIndex+1}, B${beatNumInBar}${frac>0?`+${frac.toFixed(3)}`:""})`;
-  return { valid:true, beats, bar:barIndex+1, beatInBar:beatNumInBar, frac, text };
-}
+/* ---------- Export/Import ---------- */
+function levelChartJSON(){ return JSON.stringify({ title: chart.title, bpm: chart.bpm, timeMode: chart.timeMode, startOffset: chart.startOffset, startOffsetBeats: chart.startOffsetBeats, notes: chart.notes }, null, 2); }
+function downloadJSON(){ const blob=new Blob([levelChartJSON()],{type:"application/json;charset=utf-8"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=(chart.title||"chart")+".json"; document.body.appendChild(a); a.click(); URL.revokeObjectURL(url); a.remove(); }
+$("#importFile").addEventListener("change",(e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const obj=JSON.parse(r.result); cancelEdit(false); chart.title=obj.title||"Imported"; chart.bpm=obj.bpm||120; chart.timeMode=obj.timeMode||"Seconds"; chart.startOffset=obj.startOffset||0; chart.startOffsetBeats=obj.startOffsetBeats||0; chart.notes=Array.isArray(obj.notes)?obj.notes:[]; $("#title").value=chart.title; $("#bpm").value=chart.bpm; $("#timeMode").value=chart.timeMode; $("#startOffsetSec").value=chart.startOffset; $("#startOffsetBeats").value=chart.startOffsetBeats; ensureCreatedAt(); renderNotes(); drawWave(); }catch(err){ alert("JSON parse failed: "+err); } }; r.readAsText(f,"utf-8"); });
 
-function levelChartJSON(){
-  return JSON.stringify({
-    title: chart.title,
-    bpm: chart.bpm,
-    timeMode: chart.timeMode,
-    startOffset: chart.startOffset,
-    startOffsetBeats: chart.startOffsetBeats,
-    notes: chart.notes
-  }, null, 2);
-}
-function downloadJSON(){
-  const blob = new Blob([levelChartJSON()], {type:"application/json;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = (chart.title||"chart") + ".json";
-  document.body.appendChild(a); a.click();
-  URL.revokeObjectURL(url); a.remove();
-}
-$("#importFile").addEventListener("change", (e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    try{
-      const obj = JSON.parse(reader.result);
-      cancelEdit();
-      chart.title = obj.title || "Imported Chart";
-      chart.bpm = obj.bpm || 120;
-      chart.timeMode = obj.timeMode || "Seconds";
-      chart.startOffset = obj.startOffset || 0;
-      chart.startOffsetBeats = obj.startOffsetBeats || 0;
-      chart.notes = Array.isArray(obj.notes) ? obj.notes : [];
-      $("#title").value = chart.title;
-      $("#bpm").value = chart.bpm;
-      $("#timeMode").value = chart.timeMode;
-      $("#startOffsetSec").value = chart.startOffset;
-      $("#startOffsetBeats").value = chart.startOffsetBeats;
-      renderNotes();
-      drawWave();
-    }catch(err){ alert("JSON 파싱 실패: "+err); }
-  };
-  reader.readAsText(file, "utf-8");
-});
+/* ---------- Waveform ---------- */
+const waveCanvas=$("#wave"); const wctx=waveCanvas.getContext("2d");
+const audioEl=$("#audio"); const audioFileInput=$("#audioFile");
+const playBtn=$("#playBtn"), pauseBtn=$("#pauseBtn");
+const curTimeEl=$("#curTime"), durTimeEl=$("#durTime"), curBeatEl=$("#curBeat");
+const zoomInBtn=$("#zoomInBtn"), zoomOutBtn=$("#zoomOutBtn"), fitBtn=$("#fitBtn");
+const ampScaleInput=$("#ampScale");
+let audioBuffer=null, audioURL=null, viewStart=0, viewEnd=0, isPanning=false, dragStartX=0, dragStartView=0, ampScale=0.6;
+let dragSelecting=false, dragT0=0, dragT1=0;
 
-/* ------------------------ Init (editor) ------------------------ */
-buildGrid();
-drawView();
-renderNotes();
-refreshAddButtons();
-setInterval(drawView, 100); // keep reactive
-
-/* ------------------------ Waveform / Transport / Grid ------------------------ */
-const waveCanvas = $("#wave");
-const wctx = waveCanvas.getContext("2d");
-const audioEl = $("#audio");
-const audioFileInput = $("#audioFile");
-const playBtn = $("#playBtn");
-const pauseBtn = $("#pauseBtn");
-const curTimeEl = $("#curTime");
-const durTimeEl = $("#durTime");
-const curBeatEl = $("#curBeat"); 
-const subdivSel = $("#subdiv");
-const snapChk = $("#snap");
-const zoomInBtn = $("#zoomInBtn");
-const zoomOutBtn = $("#zoomOutBtn");
-const fitBtn = $("#fitBtn");
-const ampScaleInput = $("#ampScale");
-
-let audioBuffer = null;
-let audioURL = null;
-
-let viewStart = 0;          // waveform view window [s]
-let viewEnd = 0;
-let isPanning = false;
-let dragStartX = 0;
-let dragStartView = 0;
-let ampScale = 0.6;
-
-// Resize/HiDPI
-function resizeWaveCanvas(){
-  const dpr = window.devicePixelRatio || 1;
-  const cssW = waveCanvas.clientWidth;
-  const cssH = waveCanvas.clientHeight;
-  waveCanvas.width = Math.max(600, Math.floor(cssW*dpr));
-  waveCanvas.height = Math.floor(cssH*dpr);
-  wctx.setTransform(dpr,0,0,dpr,0,0);
-  drawWave();
-}
+function resizeWaveCanvas(){ const dpr=window.devicePixelRatio||1, cssW=waveCanvas.clientWidth, cssH=waveCanvas.clientHeight; waveCanvas.width=Math.max(600,Math.floor(cssW*dpr)); waveCanvas.height=Math.floor(cssH*dpr); wctx.setTransform(dpr,0,0,dpr,0,0); drawWave(); }
 window.addEventListener("resize", resizeWaveCanvas);
 
-// File load
 audioFileInput.addEventListener("change", async (e)=>{
-  const file = e.target.files?.[0];
-  if(!file) return;
-  if(audioURL){ URL.revokeObjectURL(audioURL); audioURL = null; }
-  audioURL = URL.createObjectURL(file);
-  audioEl.src = audioURL;
+  const file=e.target.files?.[0]; if(!file) return;
+  if(audioURL){ URL.revokeObjectURL(audioURL); audioURL=null; }
+  audioURL=URL.createObjectURL(file); audioEl.src=audioURL;
+  audioEl.onloadedmetadata=()=>{ const d=audioEl.duration||0; durTimeEl.textContent=d.toFixed(3); curTimeEl.textContent="0.000"; const bi=beatInfoAt(0); curBeatEl.textContent=bi.valid?bi.text:"-"; playBtn.disabled=false; pauseBtn.disabled=false; zoomInBtn.disabled=false; zoomOutBtn.disabled=false; fitBtn.disabled=false; viewStart=0; viewEnd=d||0; drawWave(); };
+  const arr=await file.arrayBuffer(); const ac=new (window.AudioContext||window.webkitAudioContext)(); try{ audioBuffer=await ac.decodeAudioData(arr.slice(0)); }catch{ audioBuffer=null; } resizeWaveCanvas();
+});
+playBtn.addEventListener("click",()=>audioEl.play());
+pauseBtn.addEventListener("click",()=>audioEl.pause());
+audioEl.addEventListener("timeupdate", ()=>{ const t=audioEl.currentTime||0; curTimeEl.textContent=t.toFixed(3); const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-"; });
+ampScaleInput.addEventListener("input",(e)=>{ ampScale=parseFloat(e.target.value||"0.6")||0.6; drawWave(); });
 
-audioEl.onloadedmetadata = ()=>{
-  const d = audioEl.duration||0;
-  durTimeEl.textContent = d.toFixed(3);
-  curTimeEl.textContent = "0.000";
-  const bi = beatInfoAt(0);
-  curBeatEl.textContent = bi.valid ? bi.text : "-";
-    playBtn.disabled = false;
-    pauseBtn.disabled = false;
-    zoomInBtn.disabled = false;
-    zoomOutBtn.disabled = false;
-    fitBtn.disabled = false;
-    viewStart = 0; viewEnd = d || 0;
-    drawWave();
+function getDuration(){ return audioEl.duration || (audioBuffer?audioBuffer.duration:0) || 0; }
+function ensureViewBounds(){ const D=getDuration(); if(D<=0){ viewStart=0; viewEnd=0; return; } const spanMin=Math.min(0.05*D,5); if(viewEnd-viewStart<spanMin){ const c=(viewStart+viewEnd)/2; viewStart=Math.max(0,c-spanMin/2); viewEnd=Math.min(D,c+spanMin/2); } if(viewStart<0){ viewEnd-=viewStart; viewStart=0; } if(viewEnd>D){ const over=viewEnd-D; viewStart=Math.max(0,viewStart-over); viewEnd=D; } }
+function timeToX(t){ const span=(viewEnd-viewStart)||1; return ((t-viewStart)/span)*waveCanvas.clientWidth; }
+function xToTime(x){ const span=(viewEnd-viewStart)||1; return viewStart+(x/waveCanvas.clientWidth)*span; }
+
+zoomInBtn.addEventListener("click",()=>{ const c=audioEl.currentTime||(viewStart+viewEnd)/2; zoomAt(c,0.7); });
+zoomOutBtn.addEventListener("click",()=>{ const c=audioEl.currentTime||(viewStart+viewEnd)/2; zoomAt(c,1.4); });
+fitBtn.addEventListener("click",()=>{ const D=getDuration(); viewStart=0; viewEnd=D; drawWave(); });
+function zoomAt(c,f){ const D=getDuration(); if(D<=0) return; const span=(viewEnd-viewStart)||D; const ns=clamp(span*f,D*0.01,D); const lr=(c-viewStart)/span; viewStart=c-ns*lr; viewEnd=viewStart+ns; ensureViewBounds(); drawWave(); }
+
+waveCanvas.addEventListener("mousedown",(e)=>{ const rect=waveCanvas.getBoundingClientRect(); const x=e.clientX-rect.left; const t=xToTime(x); if(e.shiftKey){ dragSelecting=true; dragT0=t; dragT1=t; } else{ isPanning=true; dragStartX=x; dragStartView=viewStart; } });
+window.addEventListener("mousemove",(e)=>{ if(isPanning){ const rect=waveCanvas.getBoundingClientRect(); const x=e.clientX-rect.left; const dx=x-dragStartX; const dt=dx*(viewEnd-viewStart)/waveCanvas.clientWidth; viewStart=dragStartView-dt; viewEnd=viewStart+(viewEnd-dragStartView); ensureViewBounds(); drawWave(); } else if(dragSelecting){ const rect=waveCanvas.getBoundingClientRect(); const x=e.clientX-rect.left; dragT1=xToTime(x); drawWave(); const x0=timeToX(Math.min(dragT0,dragT1)), x1=timeToX(Math.max(dragT0,dragT1)); wctx.fillStyle="rgba(102,217,239,0.15)"; wctx.fillRect(x0,0,x1-x0,waveCanvas.clientHeight); wctx.strokeStyle="#66d9ef"; wctx.strokeRect(x0+0.5,0.5,x1-x0-1,waveCanvas.clientHeight-1); } });
+window.addEventListener("mouseup",()=>{ if(isPanning) isPanning=false; if(dragSelecting){ dragSelecting=false; const a=Math.min(dragT0,dragT1), b=Math.max(dragT0,dragT1); applyTimeFromWave(a,b); } });
+
+waveCanvas.addEventListener("wheel",(e)=>{ const t=xToTime(e.offsetX); if(e.ctrlKey){ e.preventDefault(); const f=(e.deltaY<0)?0.9:1.1; zoomAt(t,f); } else{ const dt=(viewEnd-viewStart)*(e.deltaY>0?0.05:-0.05); viewStart+=dt; viewEnd+=dt; ensureViewBounds(); drawWave(); } },{passive:false});
+
+waveCanvas.addEventListener("click",(e)=>{ if(isPanning||dragSelecting) return; if(!audioEl.duration) return; const rect=waveCanvas.getBoundingClientRect(); const x=(e.clientX-rect.left); let t=xToTime(x); audioEl.currentTime=clamp(t,0,getDuration()); applyTimeFromWave(t,null); drawWave(); });
+
+
+
+function drawWave(){ const w=waveCanvas.clientWidth, h=waveCanvas.clientHeight; wctx.clearRect(0,0,w,h); wctx.fillStyle="#0b0f1c"; wctx.fillRect(0,0,w,h); if(audioBuffer){ drawPeaksRange(wctx,w,h,audioBuffer,viewStart,viewEnd,ampScale); } else{ wctx.fillStyle="#9aa4bb"; wctx.fillText("오디오 파일을 선택하세요.", 10, h/2); } const bpm=num($("#bpm").value); const duration=getDuration(), offset=computeOffsetSeconds(); drawTimeGrid(wctx,w,h,viewStart,viewEnd); if(bpm>0 && duration>0){ drawBeatGrid(wctx,w,h,viewStart,viewEnd,bpm,offset,parseInt($("#subdiv").value||"8")); } const t=audioEl.currentTime||0; if(t>=viewStart && t<=viewEnd){ const x=timeToX(t); wctx.strokeStyle="#ffd48a"; wctx.lineWidth=2; wctx.beginPath(); wctx.moveTo(x,0); wctx.lineTo(x,h); wctx.stroke(); if(audioEl.paused){ const bi=beatInfoAt(t); const label=`${t.toFixed(3)}s | ${bi.valid?bi.text:"-"}`; const pad=6, textW=wctx.measureText(label).width, boxW=textW+pad*2, boxH=20; let bx=x+8, by=8; if(bx+boxW>w-4) bx=x-8-boxW; if(bx<4) bx=4; wctx.fillStyle="rgba(17,32,51,0.9)"; wctx.fillRect(bx,by,boxW,boxH); wctx.strokeStyle="#264463"; wctx.strokeRect(bx+0.5,by+0.5,boxW-1,boxH-1); wctx.fillStyle="#dfe7ff"; wctx.fillText(label, bx+pad, by+boxH-6); } } }
+function drawPeaksRange(ctx,w,h,buffer,vStart,vEnd,scale){ const sr=buffer.sampleRate, ch0=buffer.getChannelData(0), ch1=(buffer.numberOfChannels>1?buffer.getChannelData(1):null); const iStart=Math.max(0,Math.floor(vStart*sr)), iEnd=Math.min(ch0.length,Math.ceil(vEnd*sr)); if(iEnd<=iStart) return; const samples=iEnd-iStart, spp=Math.max(1,Math.floor(samples/w)), cy=h/2; ctx.fillStyle="#6ee7b7"; for(let x=0;x<w;x++){ const start=iStart+x*spp, end=Math.min(iEnd,start+spp); let min=1,max=-1; for(let i=start;i<end;i++){ const a0=ch0[i], a1=ch1?ch1[i]:0, a=ch1?((a0+a1)*0.5):a0; if(a<min)min=a; if(a>max)max=a; } const y1=cy+min*cy*scale, y2=cy+max*cy*scale; ctx.fillRect(x,y1,1,Math.max(1,y2-y1)); } }
+function drawTimeGrid(ctx,w,h,vStart,vEnd){ const span=vEnd-vStart; if(span<=0) return; const targetPx=80; const secPerPx=span/w; const raw=targetPx*secPerPx; const mag=Math.pow(10,Math.floor(Math.log10(raw))); const cand=[1,2,5,10]; let step=cand[0]*mag; for(const c of cand){ const s=c*mag; if(s>=raw){step=s;break;} } const startTick=Math.ceil(vStart/step)*step; for(let s=startTick;s<=vEnd+1e-6;s+=step){ const x=timeToX(s); const major=(Math.round(s/step)%5===0); ctx.strokeStyle=major?"\#2d3653":"\#1e2744"; ctx.lineWidth=major?1.5:1; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); if(major){ ctx.fillStyle="#9aa4bb"; ctx.fillText(`${s.toFixed(0)}s`, Math.max(2,x+2), 12); } } }
+function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv){ const spb=60/bpm; let bi=Math.floor((vStart-off)/spb)-1; for(;;bi++){ const t=off+bi*spb; if(t>vEnd) break; if(t>=vStart){ const x=timeToX(t); const bar=(bi%4===0); ctx.strokeStyle=bar?"\#66d9ef":"\#265a6d"; ctx.lineWidth=bar?2:1; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); if(bar){ ctx.fillStyle="#b9c2d9"; ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2,x+2), h-6); } } if(subdiv && subdiv>1){ for(let k=1;k<subdiv;k++){ const tk=t+k*spb/subdiv; if(tk<vStart||tk>vEnd) continue; const xk=timeToX(tk); ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke(); } } } }
+function beatInfoAt(t){ const bpm=num($("#bpm").value); if(bpm<=0) return {valid:false,text:"-"}; const spb=60/bpm, off=computeOffsetSeconds(); const beats=(t-off)/spb; const bar=Math.floor(beats/4)+1, inBar=beats-(bar-1)*4, bnum=Math.floor(inBar)+1, frac=inBar-Math.floor(inBar); return {valid:true, text:`${beats.toFixed(3)} (M${bar}, B${bnum}${frac>0?`+${frac.toFixed(3)}`:""})`}; }
+function computeOffsetSeconds(){ const bpm=num($("#bpm").value); const byBeats=$("#timeMode").value==="Beats"; if(byBeats && bpm>0){ const beats=num($("#startOffsetBeats").value); return beats*(60/bpm); } return num($("#startOffsetSec").value); }
+function applyTimeFromWave(t0,t1){ const byBeats=$("#timeMode").value==="Beats"; const bpm=num($("#bpm").value); const spb=bpm>0?60/bpm:0; const tOnly=(t)=>{ const typ=$("#noteType").value; if(typ==="Grid"){ $("#judgeTimeSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#judgeBeat").value=(t/spb).toFixed(3); } else if(typ==="CircleTap"){ $("#circleJudgeSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#circleJudgeBeat").value=(t/spb).toFixed(3); } else if(typ==="Slider"){ $("#sliderStartSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#sliderStartBeat").value=(t/spb).toFixed(3); } else if(typ==="Bullet"){ $("#bulletStartSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#bulletStartBeat").value=(t/spb).toFixed(3); } }; if(t1==null){ tOnly(snapTime(t0)); } else{ let a=Math.min(t0,t1), b=Math.max(t0,t1); a=snapTime(a); b=snapTime(b); const dur=Math.max(0,b-a); const typ=$("#noteType").value; if(typ==="Slider"){ $("#sliderStartSec").value=a.toFixed(3); $("#sliderDurSec").value=dur.toFixed(3); if(byBeats&&spb>0){ $("#sliderStartBeat").value=(a/spb).toFixed(3); $("#sliderDurBeats").value=(dur/spb).toFixed(3); } } else{ tOnly(a); } } }
+function snapTime(t){ if(!$("#snap").checked) return t; const bpm=num($("#bpm").value); if(bpm<=0) return t; const subdiv=parseInt($("#subdiv").value||"8"); const spb=60/bpm; const off=computeOffsetSeconds(); const rel=(t-off)/spb; const snapped=Math.round(rel*subdiv)/subdiv; return off+snapped*spb; }
+function redrawBeat(){ const t=audioEl.currentTime||0; const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-"; drawWave(); }
+
+/* ---------- Utils ---------- */
+function num(v){ const x=parseFloat(v||"0"); return isNaN(x)?0:x; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function r3(v){ return Math.round(v*1000)/1000; }
+function fmt(v){ return (v==null)?"-":r3(v); }
+function parseXY(s,def){ const [xs,ys]=(s||def).split(","); return {x:clamp(parseFloat(xs||"0.5"),0,1), y:clamp(parseFloat(ys||"0.5"),0,1)}; }
+
+/* ---------- Init ---------- */
+function firstLayout(){ const rect=view.getBoundingClientRect(); const dpr=window.devicePixelRatio||1; view.width=Math.floor(rect.width*dpr); view.height=Math.floor(rect.width*dpr); ctx.setTransform(dpr,0,0,dpr,0,0); buildGrid(); drawView(); renderNotes(); resizeWaveCanvas(); updateBulletStageLabel(); }
+window.addEventListener("load", firstLayout);
+setInterval(drawView, 100);
+(function(){
+  const listBox = document.querySelector("#sliderPointList");
+  const idxInput = document.querySelector("#ptIndex");
+  const xyInput  = document.querySelector("#ptXY");
+
+  // 없으면 조용히 종료
+  if(!listBox || !idxInput || !xyInput) return;
+
+  // 유틸
+  const getSel = () => Math.max(0, Math.min((pathPts01?.length||1)-1, parseInt(idxInput.value||"0")));
+  const setSel = (i) => { idxInput.value = String(Math.max(0, Math.min((pathPts01?.length||1)-1, i))); syncXYFromSel(); renderPointList(); drawView(); };
+  function syncXYFromSel(){
+    const i = getSel(); const p = pathPts01?.[i];
+    if(p) xyInput.value = `${r3(p.x)},${r3(p.y)}`;
+  }
+
+  // 리스트 렌더링
+  window.renderPointList = function renderPointList(){
+    if(!listBox) return;
+    const sel = getSel();
+    if(!pathPts01 || pathPts01.length===0){
+      listBox.innerHTML = '<div class="muted">(no points)</div>';
+      return;
+    }
+    let html = "";
+    pathPts01.forEach((p,i)=>{
+      const active = (i===sel) ? "active" : "";
+      html += `
+        <div class="ptrow ${active}" data-i="${i}" style="display:flex;gap:8px;align-items:center;padding:4px 6px;">
+          <span class="pill">${i}</span>
+          <span>(${r3(p.x)}, ${r3(p.y)})</span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button type="button" data-act="sel"  data-i="${i}">Sel</button>
+            <button type="button" data-act="edit" data-i="${i}">Edit</button>
+          </span>
+        </div>`;
+    });
+    listBox.innerHTML = html;
+
+    // 이벤트 위임
+    listBox.onclick = (e)=>{
+      const btn = e.target.closest("button");
+      const row = e.target.closest(".ptrow");
+      if(btn){
+        const act = btn.dataset.act;
+        const i   = parseInt(btn.dataset.i,10);
+        if(Number.isFinite(i)){
+          if(act==="sel"){ setSel(i); }
+          else if(act==="edit"){ setSel(i); xyInput.value = `${r3(pathPts01[i].x)},${r3(pathPts01[i].y)}`; }
+        }
+      }else if(row){
+        const i = parseInt(row.dataset.i,10);
+        if(Number.isFinite(i)) setSel(i);
+      }
+    };
   };
 
-  const arrbuf = await file.arrayBuffer();
-  const ac = new (window.AudioContext || window.webkitAudioContext)();
-  try{
-    audioBuffer = await ac.decodeAudioData(arrbuf.slice(0));
-  }catch(err){
-    console.warn("decodeAudioData 실패:", err);
-    audioBuffer = null;
-  }
-  resizeWaveCanvas();
-});
+  // Prev / Next 버튼
+  document.querySelector("#ptPrevBtn")?.addEventListener("click", ()=> setSel(getSel()-1));
+  document.querySelector("#ptNextBtn")?.addEventListener("click", ()=> setSel(getSel()+1));
 
-playBtn.addEventListener("click", ()=> audioEl.play());
-pauseBtn.addEventListener("click", ()=> audioEl.pause());
-audioEl.addEventListener("timeupdate", ()=>{
-  const t = audioEl.currentTime||0;
-  curTimeEl.textContent = t.toFixed(3);
-  const bi = beatInfoAt(t);
-  curBeatEl.textContent = bi.valid ? bi.text : "-";
-});
-ampScaleInput.addEventListener("input", (e)=>{
-  ampScale = parseFloat(e.target.value||"0.6") || 0.6;
-  drawWave();
-});
-
-// View helpers
-function getDuration(){
-  return audioEl.duration || (audioBuffer ? audioBuffer.duration : 0) || 0;
-}
-function ensureViewBounds(){
-  const D = getDuration();
-  if(D<=0){ viewStart=0; viewEnd=0; return; }
-  const spanMin = Math.min(0.05*D, 5);
-  if(viewEnd - viewStart < spanMin){
-    const center = (viewStart + viewEnd)/2;
-    viewStart = Math.max(0, center - spanMin/2);
-    viewEnd = Math.min(D, center + spanMin/2);
-  }
-  if(viewStart < 0){ viewEnd -= viewStart; viewStart = 0; }
-  if(viewEnd > D){ const over = viewEnd - D; viewStart = Math.max(0, viewStart - over); viewEnd = D; }
-}
-function timeToX(t){
-  const span = (viewEnd - viewStart) || 1;
-  return ((t - viewStart)/span) * waveCanvas.clientWidth;
-}
-function xToTime(xpx){
-  const span = (viewEnd - viewStart) || 1;
-  return viewStart + (xpx / waveCanvas.clientWidth) * span;
-}
-
-// Zoom/pan controls
-function zoomAt(centerT, factor){
-  const D = getDuration(); if(D<=0) return;
-  const span = (viewEnd - viewStart) || D;
-  const newSpan = clamp(span * factor, D*0.01, D);
-  const leftRatio = (centerT - viewStart) / span;
-  viewStart = centerT - newSpan*leftRatio;
-  viewEnd = viewStart + newSpan;
-  ensureViewBounds();
-  drawWave();
-}
-zoomInBtn.addEventListener("click", ()=>{
-  const center = audioEl.currentTime || (viewStart+viewEnd)/2;
-  zoomAt(center, 0.7);
-});
-zoomOutBtn.addEventListener("click", ()=>{
-  const center = audioEl.currentTime || (viewStart+viewEnd)/2;
-  zoomAt(center, 1.4);
-});
-fitBtn.addEventListener("click", ()=>{
-  const D = getDuration(); viewStart = 0; viewEnd = D; drawWave();
-});
-
-// Mouse interactions
-let dragSelecting = false;
-let dragT0 = 0, dragT1 = 0;
-
-waveCanvas.addEventListener("mousedown",(e)=>{
-  const rect = waveCanvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const t = xToTime(x);
-  if(e.shiftKey){
-    dragSelecting = true;
-    dragT0 = t; dragT1 = t;
-  }else{
-    isPanning = true;
-    dragStartX = x;
-    dragStartView = viewStart;
-  }
-});
-window.addEventListener("mousemove",(e)=>{
-  if(isPanning){
-    const rect = waveCanvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const dx = x - dragStartX;
-    const dt = dx * (viewEnd - viewStart) / waveCanvas.clientWidth;
-    viewStart = dragStartView - dt;
-    viewEnd = viewStart + (viewEnd - dragStartView);
-    ensureViewBounds();
-    drawWave();
-  }else if(dragSelecting){
-    const rect = waveCanvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    dragT1 = xToTime(x);
-    drawWave();
-    const x0 = timeToX(Math.min(dragT0, dragT1));
-    const x1 = timeToX(Math.max(dragT0, dragT1));
-    wctx.fillStyle = "rgba(102,217,239,0.15)";
-    wctx.fillRect(x0, 0, x1-x0, waveCanvas.clientHeight);
-    wctx.strokeStyle = "#66d9ef";
-    wctx.lineWidth = 1;
-    wctx.strokeRect(x0+0.5, 0.5, x1-x0-1, waveCanvas.clientHeight-1);
-  }
-});
-window.addEventListener("mouseup",()=>{
-  if(isPanning){ isPanning=false; }
-  if(dragSelecting){
-    dragSelecting=false;
-    const t0 = Math.min(dragT0, dragT1);
-    const t1 = Math.max(dragT0, dragT1);
-    applyTimeFromWave(t0, t1);
-  }
-});
-
-// Wheel: pan / Ctrl+wheel: zoom
-waveCanvas.addEventListener("wheel",(e)=>{
-  const t = xToTime(e.offsetX);
-  if(e.ctrlKey){
-    e.preventDefault();
-    const factor = (e.deltaY < 0) ? 0.9 : 1.1;
-    zoomAt(t, factor);
-  }else{
-    const dt = (viewEnd - viewStart) * (e.deltaY>0? 0.05 : -0.05);
-    viewStart += dt; viewEnd += dt; ensureViewBounds(); drawWave();
-  }
-},{passive:false});
-
-// Click: seek + set time
-waveCanvas.addEventListener("click",(e)=>{
-  if(isPanning || dragSelecting) return;
-  if(!audioEl.duration) return;
-  const rect = waveCanvas.getBoundingClientRect();
-  const x = (e.clientX - rect.left);
-  let t = xToTime(x);
-
-  audioEl.currentTime = clamp(t, 0, getDuration());
-  applyTimeFromWave(t, null);
-  drawWave();
-});
-
-function drawWave(){
-  const w = waveCanvas.clientWidth;
-  const h = waveCanvas.clientHeight;
-  wctx.clearRect(0,0,w,h);
-  wctx.fillStyle = "#0b0f1c";
-  wctx.fillRect(0,0,w,h);
-
-  if(audioBuffer){
-    drawPeaksRange(wctx, w, h, audioBuffer, viewStart, viewEnd, ampScale);
-  }else{
-    wctx.fillStyle = "#9aa4bb";
-    wctx.font = "12px system-ui, -apple-system, Segoe UI, sans-serif";
-    wctx.fillText("오디오 파일을 선택하면 파형이 표시됩니다.", 10, h/2);
-  }
-
-  const bpm = parseFloat($("#bpm").value||"0") || 0;
-  const duration = getDuration();
-  const offsetSec = computeOffsetSeconds();
-  drawTimeGrid(wctx, w, h, viewStart, viewEnd);
-  if(bpm > 0 && duration > 0){
-    const subdiv = parseInt(subdivSel.value||"8");
-    drawBeatGrid(wctx, w, h, viewStart, viewEnd, bpm, offsetSec, subdiv);
-  }
-
-  if(duration > 0){
-    const t = audioEl.currentTime || 0;
-    if(t >= viewStart && t <= viewEnd){
-      const x = timeToX(t);
-      wctx.strokeStyle = "#ffd48a";
-      wctx.lineWidth = 2;
-      wctx.beginPath();
-      wctx.moveTo(x, 0);
-      wctx.lineTo(x, h);
-      wctx.stroke();
-
-      // ▼▼ 일시정지 상태에서 말풍선 라벨 표시 ▼▼
-      if (audioEl.paused) {
-        const bi = beatInfoAt(t);
-        const label = `${t.toFixed(3)}s · ${bi.valid ? bi.text : "-"}`;
-        wctx.font = "12px system-ui, -apple-system, Segoe UI, sans-serif";
-        const pad = 6;
-        const textW = wctx.measureText(label).width;
-        const boxW = textW + pad*2;
-        const boxH = 20;
-
-        // 라벨을 커서 오른쪽 위에 배치(화면 밖이면 자동 보정)
-        let bx = x + 8;
-        let by = 8;
-        if (bx + boxW > w - 4) bx = x - 8 - boxW;
-        if (bx < 4) bx = 4;
-
-        // 배경 박스
-        wctx.fillStyle = "rgba(17, 32, 51, 0.9)";
-        wctx.fillRect(bx, by, boxW, boxH);
-        wctx.strokeStyle = "#264463";
-        wctx.lineWidth = 1;
-        wctx.strokeRect(bx+0.5, by+0.5, boxW-1, boxH-1);
-
-        // 텍스트
-        wctx.fillStyle = "#dfe7ff";
-        wctx.fillText(label, bx + pad, by + boxH - 6);
-      } // <-- audioEl.paused if 닫기
-      // ▲▲ 말풍선 라벨 끝 ▲▲
-    } // <-- t in view if 닫기
-  } // <-- duration >0 if 닫기
-} // <-- drawWave 닫기
-
-// Time grid (seconds)
-function drawTimeGrid(ctx, w, h, vStart, vEnd){
-  const span = vEnd - vStart; if(span<=0) return;
-  ctx.save();
-  const targetPx = 80;
-  const secPerPx = span / w;
-  const rawStep = targetPx * secPerPx;
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const candidates = [1,2,5,10];
-  let step = candidates[0]*mag;
-  for(const c of candidates){
-    const s = c*mag;
-    if(s >= rawStep){ step = s; break; }
-  }
-  const textY = 12;
-  const startTick = Math.ceil(vStart/step)*step;
-  for(let s=startTick; s<=vEnd+1e-6; s+=step){
-    const x = timeToX(s);
-    const isMajor = (Math.round((s/step)) % 5 === 0);
-    ctx.strokeStyle = isMajor ? "#2d3653" : "#1e2744";
-    ctx.lineWidth = isMajor ? 1.5 : 1;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-
-    if(isMajor){
-      ctx.fillStyle = "#9aa4bb";
-      ctx.font = "11px system-ui, -apple-system, Segoe UI, sans-serif";
-      ctx.fillText(`${s.toFixed(0)}s`, Math.max(2, x+2), textY);
-    }
-  }
-  ctx.restore();
-}
-
-// Beat/bar/subdivision grid (4/4)
-function drawBeatGrid(ctx, w, h, vStart, vEnd, bpm, offsetSec, subdiv){
-  ctx.save();
-  const spb = 60 / bpm;
-  let firstBeatIndex = Math.floor((vStart - offsetSec) / spb) - 1;
-  for(let bi=firstBeatIndex; ; bi++){
-    const t = offsetSec + bi * spb;
-    if(t > vEnd) break;
-
-    if(t >= vStart){
-      const x = timeToX(t);
-      const isBar = (bi % 4 === 0);
-      ctx.strokeStyle = isBar ? "#66d9ef" : "#265a6d";
-      ctx.lineWidth = isBar ? 2 : 1;
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-
-      if(isBar){
-        ctx.fillStyle = "#b9c2d9";
-        ctx.font = "11px system-ui, -apple-system, Segoe UI, sans-serif";
-        ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2, x+2), h-6);
+  // Enter 로 ptXY 적용
+  xyInput.addEventListener("keydown", (e)=>{
+    if(e.key === "Enter"){
+      const i = getSel();
+      const [xs,ys] = (xyInput.value||"0.5,0.5").split(",");
+      const x = clamp(parseFloat(xs||"0.5"),0,1);
+      const y = clamp(parseFloat(ys||"0.5"),0,1);
+      if(!pathPts01 || pathPts01.length===0){
+        pathPts01.push({x,y});
+      }else{
+        pathPts01[i] = {x,y};
       }
+      renderPointList(); drawView();
+    }
+  });
+
+  // 통합 키다운 훅: 화살표 미세 이동 + 인덱스 이동
+  window.addEventListener("keydown", (e)=>{
+    if(document.querySelector("#noteType")?.value !== "Slider") return;
+    if(!pathPts01 || pathPts01.length===0) return;
+
+    let i = getSel();
+    const step = e.shiftKey ? 0.05 : 0.01;
+    let moved = false;
+
+    if(e.key==="ArrowLeft"){ pathPts01[i].x = clamp(pathPts01[i].x - step, 0, 1); moved=true; }
+    if(e.key==="ArrowRight"){ pathPts01[i].x = clamp(pathPts01[i].x + step, 0, 1); moved=true; }
+    if(e.key==="ArrowUp"){ pathPts01[i].y = clamp(pathPts01[i].y + step, 0, 1); moved=true; }
+    if(e.key==="ArrowDown"){ pathPts01[i].y = clamp(pathPts01[i].y - step, 0, 1); moved=true; }
+    if(moved){
+      xyInput.value = `${r3(pathPts01[i].x)},${r3(pathPts01[i].y)}`;
+      renderPointList(); drawView();
+      e.preventDefault();
     }
 
-    if(subdiv && subdiv>1){
-      for(let k=1;k<subdiv;k++){
-        const tk = t + (k * spb / subdiv);
-        if(tk < vStart || tk > vEnd) continue;
-        const xk = timeToX(tk);
-        ctx.strokeStyle = "#1e3a4f";
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(xk, 0); ctx.lineTo(xk, h); ctx.stroke();
-      }
+    // 인덱스 이동 (PageUp/PageDown)
+    if(e.key==="PageUp"){
+      setSel(i-1);
+      e.preventDefault();
     }
-  }
-  ctx.restore();
-}
-
-// Offset seconds from mode
-function computeOffsetSeconds(){
-  const bpm = parseFloat($("#bpm").value||"0") || 0;
-  const byBeats = $("#timeMode").value === "Beats";
-  if(byBeats && bpm > 0){
-    const beats = parseFloat($("#startOffsetBeats").value||"0") || 0;
-    return beats * (60 / bpm);
-  }
-  return parseFloat($("#startOffsetSec").value||"0") || 0;
-}
-
-// Peaks for visible range with vertical scale
-function drawPeaksRange(ctx, w, h, buffer, vStart, vEnd, scale){
-  const sr = buffer.sampleRate;
-  const ch0 = buffer.getChannelData(0);
-  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
-  const iStart = Math.max(0, Math.floor(vStart * sr));
-  const iEnd   = Math.min(ch0.length, Math.ceil(vEnd * sr));
-  if(iEnd <= iStart) return;
-
-  const samples = iEnd - iStart;
-  const samplesPerPixel = Math.max(1, Math.floor(samples / w));
-  const centerY = h/2;
-  ctx.fillStyle = "#6ee7b7";
-
-  for(let x=0; x<w; x++){
-    const start = iStart + x * samplesPerPixel;
-    const end = Math.min(iEnd, start + samplesPerPixel);
-    let min =  1, max = -1;
-
-    for(let i=start; i<end; i++){
-      const a0 = ch0[i];
-      const a1 = ch1 ? ch1[i] : 0;
-      const a = ch1 ? (a0 + a1) * 0.5 : a0;
-      if(a < min) min = a;
-      if(a > max) max = a;
+    if(e.key==="PageDown"){
+      setSel(i+1);
+      e.preventDefault();
     }
-    const y1 = centerY + min * centerY * scale;
-    const y2 = centerY + max * centerY * scale;
-    ctx.fillRect(x, y1, 1, Math.max(1, y2 - y1));
-  }
-}
+  });
 
-// Snap helpers
-function snapTime(t){
-  if(!snapChk.checked) return t;
-  const bpm = parseFloat($("#bpm").value||"0") || 0;
-  if(bpm<=0) return t;
-  const subdiv = parseInt(subdivSel.value||"8");
-  const spb = 60 / bpm;
-  const offset = computeOffsetSeconds();
-  const relBeats = (t - offset) / spb;
-  const snappedBeats = Math.round(relBeats * subdiv) / subdiv;
-  return offset + snappedBeats * spb;
-}
+  // 외부에서 포인트가 바뀌는 타이밍에 호출해 주세요:
+  // - 점 추가/삭제/정렬/로드/클리어 후: renderPointList();
+  // 초기 1회
+  renderPointList();
 
-// Apply time from waveform to form fields
-function applyTimeFromWave(t0, t1){
-  const byBeats = $("#timeMode").value === "Beats";
-  const bpm = parseFloat($("#bpm").value||"0") || 0;
-  const spb = bpm>0 ? 60/bpm : 0;
-
-  if(t1===null || t1===undefined){
-    const t = snapTime(t0);
-    const typ = $("#noteType").value;
-    if(typ==="Grid"){
-      $("#judgeTimeSec").value = t.toFixed(3);
-      if(byBeats && spb>0) $("#judgeBeat").value = (t/spb).toFixed(3);
-    }else if(typ==="CircleTap"){
-      $("#circleJudgeSec").value = t.toFixed(3);
-      if(byBeats && spb>0) $("#circleJudgeBeat").value = (t/spb).toFixed(3);
-    }else if(typ==="Slider"){
-      $("#sliderStartSec").value = t.toFixed(3);
-      if(byBeats && spb>0) $("#sliderStartBeat").value = (t/spb).toFixed(3);
-    }
-  }else{
-    let a = Math.min(t0,t1), b = Math.max(t0,t1);
-    a = snapTime(a); b = snapTime(b);
-    const dur = Math.max(0, b-a);
-    const typ = $("#noteType").value;
-    if(typ==="Slider"){
-      $("#sliderStartSec").value = a.toFixed(3);
-      $("#sliderDurSec").value = dur.toFixed(3);
-      if(byBeats && spb>0){
-        $("#sliderStartBeat").value = (a/spb).toFixed(3);
-        $("#sliderDurBeats").value  = (dur/spb).toFixed(3);
-      }
-    }else{
-      applyTimeFromWave(a, null);
-    }
-  }
-}
-
-// Animation loop
-function rafLoop(){
-  drawWave();
-  requestAnimationFrame(rafLoop);
-}
-requestAnimationFrame(rafLoop);
-
-// First layout
-function firstLayout(){
-  // match canvas CSS pixels to backing store at load
-  const rect = view.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  view.width = Math.floor(rect.width * dpr);
-  view.height = Math.floor(rect.width * dpr); // keep it square; aspect handled inside
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  resizeWaveCanvas();
-  drawView();
-}
-window.addEventListener("load", firstLayout);
+  // 슬라이더 점을 클릭해 추가할 때 등, 외부 코드에서 다음 두 줄을 적절히 넣으면 동기화가 좋아요:
+  //   $("#pathCount").textContent = String(pathPts01.length);
+  //   renderPointList();
+})();
+// Clear All helper (누락 방지)
+function clearAll(){ chart.notes=[]; renderNotes(); drawView(); }
 </script>
 </body>
 </html>
+
