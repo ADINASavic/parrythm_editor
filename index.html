@@ -430,16 +430,6 @@ function removePoint(){
 
 /* ---------- 통합 키다운 핸들러 ---------- */
 window.addEventListener("keydown",(e)=>{
-  // 1) Bullet 3-click: Backspace 되돌리기 (먼저 처리)
-  if($("#noteType").value==="Bullet" && $("#bullet3Click").checked && e.key === "Backspace"){
-    if(bulletStage === 2){ bulletTemp.dock = null; bulletStage = 1; }
-    else if(bulletStage === 1){ bulletTemp.spawn = null; bulletStage = 0; }
-    else if(bulletStage === 0 && bulletTemp.despawn){ bulletTemp.despawn = null; bulletStage = 2; }
-    updateBulletStageLabel();
-    drawView();
-    e.preventDefault();
-    return; // Backspace는 여기서 종료
-  }
 
   // 2) Slider: 화살표로 선택 점 미세 이동
   if($("#noteType").value==="Slider" && pathPts01.length>0){
@@ -620,8 +610,56 @@ let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("dra
 
 /* ---------- 정렬 & 시간 계산 ---------- */
 function spb(){ const bpm = num($("#bpm").value); return bpm>0 ? 60/bpm : 0; }
-function getNoteTimeSec(n){ const S=spb(); const byBeats=$("#timeMode").value==="Beats"; const secFromBeats=(b)=> (isFinite(b)? b*S : null); const pick=(a,b)=> (isFinite(a)&&a>0)?a:(isFinite(b)?b:0); if(n.type==="Slider"){const s=n.startTime,b=n.startBeat;return byBeats?pick(secFromBeats(b),s):pick(s,secFromBeats(b));} if(n.type==="Bullet"){const s=n.bulletSpawnTime,b=n.bulletSpawnBeat;return byBeats?pick(secFromBeats(b),s):pick(s,secFromBeats(b));} const s=n.judgeTime,b=n.judgeBeat;return byBeats?pick(secFromBeats(b),s):pick(s,secFromBeats(b)); }
-function getNoteTimeBeats(n){ const S=spb(); const byBeats=$("#timeMode").value==="Beats"; const beatsFromSec=(s)=> (isFinite(s)? s/(S||1) : null); const pick=(a,b)=> (isFinite(a)&&a>0)?a:(isFinite(b)?b:0); if(n.type==="Slider"){const s=n.startTime,b=n.startBeat;return byBeats?pick(b,beatsFromSec(s)):pick(beatsFromSec(s),b);} if(n.type==="Bullet"){const s=n.bulletSpawnTime,b=n.bulletSpawnBeat;return byBeats?pick(b,beatsFromSec(s)):pick(beatsFromSec(s),b);} const s=n.judgeTime,b=n.judgeBeat;return byBeats?pick(b,beatsFromSec(s)):pick(beatsFromSec(s),b);} 
+function getNoteTimeSec(n){
+  const S = spb();
+  const byBeats = $("#timeMode").value === "Beats";
+
+  const present = v => v != null && isFinite(v);      // ← 0도 허용
+  const secFromBeats = (beats)=> present(beats) ? beats*S : null;
+  const pick = (primary, fallback)=> present(primary) ? primary : (present(fallback) ? fallback : 0);
+
+  if(n.type === "Slider"){
+    const sec = n.startTime;
+    const beat = n.startBeat;
+    return byBeats ? pick(secFromBeats(beat), sec) : pick(sec, secFromBeats(beat));
+  }
+  if(n.type === "Bullet"){
+    // ★ Bullet은 'spawn(시작)' 기준으로만 대표 시간 계산
+    const sec = n.bulletSpawnTime;
+    const beat = n.bulletSpawnBeat;
+    return byBeats ? pick(secFromBeats(beat), sec) : pick(sec, secFromBeats(beat));
+  }
+  // Grid / CircleTap
+  const sec = n.judgeTime;
+  const beat = n.judgeBeat;
+  return byBeats ? pick(secFromBeats(beat), sec) : pick(sec, secFromBeats(beat));
+}
+
+function getNoteTimeBeats(n){
+  const S = spb();
+  const byBeats = $("#timeMode").value === "Beats";
+
+  const present = v => v != null && isFinite(v);      // ← 0도 허용
+  const beatsFromSec = (sec)=> present(sec) ? sec / (S||1) : null;
+  const pick = (primary, fallback)=> present(primary) ? primary : (present(fallback) ? fallback : 0);
+
+  if(n.type === "Slider"){
+    const sec = n.startTime;
+    const beat = n.startBeat;
+    return byBeats ? pick(beat, beatsFromSec(sec)) : pick(beatsFromSec(sec), beat);
+  }
+  if(n.type === "Bullet"){
+    // ★ Bullet은 'spawn(시작)' 기준으로만 대표 시간 계산
+    const sec = n.bulletSpawnTime;
+    const beat = n.bulletSpawnBeat;
+    return byBeats ? pick(beat, beatsFromSec(sec)) : pick(beatsFromSec(sec), beat);
+  }
+  // Grid / CircleTap
+  const sec = n.judgeTime;
+  const beat = n.judgeBeat;
+  return byBeats ? pick(beat, beatsFromSec(sec)) : pick(beatsFromSec(sec), beat);
+}
+
 function spawnSecOf(n){ const circleLead=num($("#circleLead").value), sliderLead=num($("#sliderLead").value), gridTarget=num($("#gridTarget").value), gridGrow=Math.max(0.0001,num($("#gridGrow").value)), gridLead=gridTarget/gridGrow; if(n.type==="Grid") return getNoteTimeSec(n)-gridLead; if(n.type==="CircleTap") return getNoteTimeSec(n)-circleLead; if(n.type==="Slider") return getNoteTimeSec(n)-sliderLead; if(n.type==="Bullet") return getNoteTimeSec(n); return getNoteTimeSec(n);} 
 function sortByCreation(){ ensureCreatedAt(); chart.notes.sort((a,b)=> (a._createdAt||0)-(b._createdAt||0)); renderNotes(); }
 function sortByTimeSec(){ chart.notes.sort((a,b)=> getNoteTimeSec(a)-getNoteTimeSec(b)); renderNotes(); }
@@ -643,7 +681,32 @@ const zoomInBtn=$("#zoomInBtn"), zoomOutBtn=$("#zoomOutBtn"), fitBtn=$("#fitBtn"
 const ampScaleInput=$("#ampScale");
 let audioBuffer=null, audioURL=null, viewStart=0, viewEnd=0, isPanning=false, dragStartX=0, dragStartView=0, ampScale=0.6;
 let dragSelecting=false, dragT0=0, dragT1=0;
+let _rafId = null;
 
+function _tick() {
+  drawWave();
+  _rafId = requestAnimationFrame(_tick);
+}
+
+// 재생/일시정지/종료에 따라 루프 제어
+audioEl.addEventListener("play", () => {
+  if (_rafId) cancelAnimationFrame(_rafId);
+  _tick();
+});
+audioEl.addEventListener("pause", () => {
+  if (_rafId) cancelAnimationFrame(_rafId);
+  _rafId = null;
+});
+audioEl.addEventListener("ended", () => {
+  if (_rafId) cancelAnimationFrame(_rafId);
+  _rafId = null;
+  drawWave(); // 마지막 위치로 한 번 더 그리기
+});
+
+// 드물지만, 탐색/배속 변경 시도 즉시 반영
+audioEl.addEventListener("seeking", drawWave);
+audioEl.addEventListener("seeked", drawWave);
+audioEl.addEventListener("ratechange", drawWave);
 function resizeWaveCanvas(){ const dpr=window.devicePixelRatio||1, cssW=waveCanvas.clientWidth, cssH=waveCanvas.clientHeight; waveCanvas.width=Math.max(600,Math.floor(cssW*dpr)); waveCanvas.height=Math.floor(cssH*dpr); wctx.setTransform(dpr,0,0,dpr,0,0); drawWave(); }
 window.addEventListener("resize", resizeWaveCanvas);
 
@@ -656,8 +719,31 @@ audioFileInput.addEventListener("change", async (e)=>{
 });
 playBtn.addEventListener("click",()=>audioEl.play());
 pauseBtn.addEventListener("click",()=>audioEl.pause());
-audioEl.addEventListener("timeupdate", ()=>{ const t=audioEl.currentTime||0; curTimeEl.textContent=t.toFixed(3); const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-"; });
+audioEl.addEventListener("timeupdate", ()=>{ const t=audioEl.currentTime||0; curTimeEl.textContent=t.toFixed(3); const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-";  drawWave();  });
 ampScaleInput.addEventListener("input",(e)=>{ ampScale=parseFloat(e.target.value||"0.6")||0.6; drawWave(); });
+// ===== 재생 상태에서 RAF 루프 =====
+let rafId = null;
+
+function tick() {
+  drawWave();                   // 현재 위치 포함해서 파형 다시 그림
+  rafId = requestAnimationFrame(tick);
+}
+
+audioEl.addEventListener("play", () => {
+  if (rafId) cancelAnimationFrame(rafId);
+  tick();
+});
+
+audioEl.addEventListener("pause", () => {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+});
+
+audioEl.addEventListener("ended", () => {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+  drawWave(); // 마지막 위치 업데이트
+});
 
 function getDuration(){ return audioEl.duration || (audioBuffer?audioBuffer.duration:0) || 0; }
 function ensureViewBounds(){ const D=getDuration(); if(D<=0){ viewStart=0; viewEnd=0; return; } const spanMin=Math.min(0.05*D,5); if(viewEnd-viewStart<spanMin){ const c=(viewStart+viewEnd)/2; viewStart=Math.max(0,c-spanMin/2); viewEnd=Math.min(D,c+spanMin/2); } if(viewStart<0){ viewEnd-=viewStart; viewStart=0; } if(viewEnd>D){ const over=viewEnd-D; viewStart=Math.max(0,viewStart-over); viewEnd=D; } }
@@ -821,4 +907,5 @@ function clearAll(){ chart.notes=[]; renderNotes(); drawView(); }
 </script>
 </body>
 </html>
+
 
