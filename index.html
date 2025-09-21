@@ -225,29 +225,7 @@
       </div>
     </div>
 
-    <div class="row" id="orderToolbar">
-      <span class="pill">Order</span>
-      <button onclick="sortByCreation()">By Creation</button>
-      <button onclick="sortByTimeSec()">By Time (sec)</button>
-      <button onclick="sortByTimeBeats()">By Time (beats)</button>
-      <button onclick="sortBySpawn()">By Spawn</button>
-      <button class="primary" onclick="reindexNotes()">Reindex</button>
-      <span class="muted">Tip: drag table rows to reorder</span>
-    </div>
-
-    <h4 style="margin:8px 0 6px">Notes</h4>
-    <table id="notesTable">
-      <thead>
-        <tr>
-          <th>#</th><th>Type</th><th>Data</th><th>Time</th><th>Spawn(s)</th><th></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </section>
-
-  <!-- 파형/재생/박자 -->
-  <section class="card fullrow">
+      <section class="card fullrow">
     <h3 style="margin:4px 0 12px">Audio Reference (Waveform & Beat Grid)</h3>
     <div class="wave-toolbar">
       <input id="audioFile" type="file" accept="audio/*">
@@ -278,6 +256,30 @@
     </div>
   </section>
 </div>
+
+    <div class="row" id="orderToolbar">
+      <span class="pill">Order</span>
+      <button onclick="sortByCreation()">By Creation</button>
+      <button onclick="sortByTimeSec()">By Time (sec)</button>
+      <button onclick="sortByTimeBeats()">By Time (beats)</button>
+      <button onclick="sortBySpawn()">By Spawn</button>
+      <button class="primary" onclick="reindexNotes()">Reindex</button>
+      <span class="muted">Tip: drag table rows to reorder</span>
+    </div>
+
+    <h4 style="margin:8px 0 6px">Notes</h4>
+    <table id="notesTable">
+      <thead>
+        <tr>
+          <th>#</th><th>Type</th><th>Data</th><th>Time</th><th>Spawn(s)</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- 파형/재생/박자 -->
+
 
 <script>
 const $ = s => document.querySelector(s);
@@ -1154,5 +1156,6 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
 
 
