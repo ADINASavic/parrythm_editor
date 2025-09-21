@@ -52,35 +52,6 @@
 <div class="wrap">
   <!-- 왼쪽 패널 -->
   <section class="card">
-    <h3 style="margin:4px 0 8px">Chart</h3>
-    <div class="row"><label>FMOD Event</label>
-  <input id="fmodEvent" type="text" placeholder="event:/your/path/here">
-</div>
-    <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"></div>
-    <div class="row"><label>BPM</label><input id="bpm" type="number" value="120" step="0.01"></div>
-    <div class="row"><label>Time Mode</label>
-      <select id="timeMode"><option value="Seconds">Seconds</option><option value="Beats">Beats</option></select>
-    </div>
-    <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"></div>
-    <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"></div>
-    <div class="row"><label>Artist</label><input id="artist" type="text" value="Unknown"></div>
-  <div class="row"><label>Preview Start</label><input id="previewStart" type="number" value="5.0" step="0.01"></div>
-  <div class="row"><label>Preview Duration</label><input id="previewDuration" type="number" value="10.0" step="0.01"></div>
-  <div class="row"><label>Tags (comma)</label><input id="tags" type="text" value="demo"></div>
-  <div class="row"><label>Cover</label><input id="coverFile" type="file" accept="image/*"></div>
-
-  <div class="row" style="gap:6px">
-    <button onclick="downloadJSON()" class="primary">Download JSON</button>
-    <button onclick="exportSongZip()" class="primary">Export Song Folder (.zip)</button>
-  </div>
-
-    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
-    <h3 style="margin:4px 0 8px">Spawn Calc Settings</h3>
-    <div class="row"><label>Circle Lead (s)</label><input id="circleLead" type="number" step="0.001" value="1.2"></div>
-    <div class="row"><label>Slider Lead (s)</label><input id="sliderLead" type="number" step="0.001" value="1.0"></div>
-    <div class="row"><label>Grid Target Size</label><input id="gridTarget" type="number" step="0.001" value="216"></div>
-    <div class="row"><label>Grid Grow Speed</label><input id="gridGrow" type="number" step="0.001" value="216"></div>
-    <div class="hint">Grid spawn = judge - (targetSize / growSpeed), Circle = judge - circleLead, Slider = start - sliderLead</div>
 
     <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
     <h3 style="margin:4px 0 8px">Add/Edit Note</h3>
@@ -181,6 +152,31 @@
       <div class="hint">Absolute 캔버스 클릭으로 선택된 target 좌표를 세팅할 수 있습니다.</div>
     </div>
 
+        <h3 style="margin:4px 0 8px">Chart</h3>
+    <div class="row"><label>FMOD Event</label>
+  <input id="fmodEvent" type="text" placeholder="event:/your/path/here">
+</div>
+    <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"></div>
+    <div class="row"><label>BPM</label><input id="bpm" type="number" value="120" step="0.01"></div>
+    <div class="row"><label>Time Mode</label>
+      <select id="timeMode"><option value="Seconds">Seconds</option><option value="Beats">Beats</option></select>
+    </div>
+    <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"></div>
+    <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"></div>
+    <div class="row"><label>Artist</label><input id="artist" type="text" value="Unknown"></div>
+  <div class="row"><label>Preview Start</label><input id="previewStart" type="number" value="5.0" step="0.01"></div>
+  <div class="row"><label>Preview Duration</label><input id="previewDuration" type="number" value="10.0" step="0.01"></div>
+  <div class="row"><label>Tags (comma)</label><input id="tags" type="text" value="demo"></div>
+  <div class="row"><label>Cover</label><input id="coverFile" type="file" accept="image/*"></div>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <h3 style="margin:4px 0 8px">Spawn Calc Settings</h3>
+    <div class="row"><label>Circle Lead (s)</label><input id="circleLead" type="number" step="0.001" value="1.2"></div>
+    <div class="row"><label>Slider Lead (s)</label><input id="sliderLead" type="number" step="0.001" value="1.0"></div>
+    <div class="row"><label>Grid Target Size</label><input id="gridTarget" type="number" step="0.001" value="216"></div>
+    <div class="row"><label>Grid Grow Speed</label><input id="gridGrow" type="number" step="0.001" value="216"></div>
+    <div class="hint">Grid spawn = judge - (targetSize / growSpeed), Circle = judge - circleLead, Slider = start - sliderLead</div>
+
     <!-- 편집 바 -->
     <div id="editBar" class="editbar">
       <span class="pill">Editing <span id="editLabel" style="font-weight:700"></span></span>
@@ -191,6 +187,7 @@
     <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
     <div class="row" style="gap:6px">
       <button onclick="downloadJSON()" class="primary">Download JSON</button>
+      <button onclick="exportSongZip()" class="primary">Export Song Folder (.zip)</button>
       <label class="pill">LevelChart (schemaVersion=2)</label>
     </div>
     <div class="row" style="gap:6px">
