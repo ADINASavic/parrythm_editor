@@ -180,10 +180,39 @@
     <div class="row"><label>Circle Lead (s)</label><input id="circleLead" type="number" step="0.001" value="1.2"></div>
     <div class="row"><label>Slider Lead (s)</label><input id="sliderLead" type="number" step="0.001" value="1.0"></div>
     <div class="row"><label>Grid Target Size</label><input id="gridTarget" type="number" step="0.001" value="216"></div>
-    <div class="row"><label>Grid Grow Speed</label><input id="gridGrow" type="number" step="0.001" value="216"></div>
+    <div class="row"><label>Grid Grow Speed</label><input id="gridGrow" type="number" step="0.001" value="324"></div>
     <div class="hint">Grid spawn = judge - (targetSize / growSpeed), Circle = judge - circleLead, Slider = start - sliderLead</div>
+    <div class="row"><label>Grid Grow Unit</label>
+  <select id="gridGrowUnit">
+    <option value="pxps" selected>px/sec</option>
+    <option value="pxpbeat">px/beat</option>
+  </select>
+</div>
+<div class="row"><label>Circle Lead (beats)</label>
+  <input id="circleLeadBeats" type="number" step="0.001" value="0.0">
+</div>
+<div class="row"><label>Slider Lead (beats)</label>
+  <input id="sliderLeadBeats" type="number" step="0.001" value="0.0">
+</div>
 
-    <!-- 편집 바 -->
+<!-- Grid 타깃을 픽셀/간격 모드로 선택 -->
+<div class="row"><label>Grid Target Mode</label>
+  <select id="gridTargetMode">
+    <option value="px" selected>Absolute px</option>
+    <option value="spacingX">Touch centers (Horizontal)</option>
+    <option value="spacingY">Touch centers (Vertical)</option>
+  </select>
+</div>
+
+<!-- Bullet 크기 설정 (지름 px) -->
+<div class="row"><label>Bullet Size (px, diameter)</label>
+  <input id="bulletSize" type="number" step="1" value="64">
+</div>
+
+
+
+    <!-- [ADD] Circle/Slider/Bullet 시뮬 크기 설정 -->
+    <div class="row"><label>Circle Target (radius px)</label><input id="circleTargetRadius" type="number" step="1" value="100"></div> <!-- [ADD] -->
 
 
     <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
@@ -281,6 +310,15 @@
 
 
 <script>
+
+const GRID_LEFT   = 648;
+const GRID_RIGHT  = 1296;            // inclusive boundary for area end
+const GRID_TOP    = 216;
+const GRID_BOTTOM = 1080 - 216;      // 864
+const GRID_W = GRID_RIGHT - GRID_LEFT;   // 648
+const GRID_H = GRID_BOTTOM - GRID_TOP;   // 648
+const GRID_CELL = GRID_W / 3;      
+
 const $ = s => document.querySelector(s);
 
 /* ---------- 절대좌표 기준 ---------- */
@@ -418,31 +456,268 @@ function drawView(){
     ctx.beginPath();ctx.moveTo(x,ar.y);ctx.lineTo(x,ar.y+ar.h);ctx.stroke();
     ctx.beginPath();ctx.moveTo(ar.x,y);ctx.lineTo(ar.x+ar.w,y);ctx.stroke();
   }
-  // slider path
+  // slider path (editing preview)
   if(pathPtsAbs.length){
     ctx.strokeStyle="#6ee7b7"; ctx.lineWidth=2; ctx.beginPath();
     let p0=toCXabs(pathPtsAbs[0]); ctx.moveTo(p0.x,p0.y);
     for(let i=1;i<pathPtsAbs.length;i++){ const p=toCXabs(pathPtsAbs[i]); ctx.lineTo(p.x,p.y); }
     ctx.stroke();
-    ctx.fillStyle="#6ee7b7";
-    pathPtsAbs.forEach((q)=>{ const p=toCXabs(q); ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fill(); });
   }
-  // bullet 3-click preview
-  if($("#noteType").value==="Bullet" && $("#bullet3Click").checked){
-    const pts = [];
-    if(bulletTemp.spawn) pts.push(bulletTemp.spawn);
-    if(bulletTemp.dock) pts.push(bulletTemp.dock);
-    if(bulletTemp.despawn) pts.push(bulletTemp.despawn);
-    if(pts.length){
-      ctx.strokeStyle="#fbbf24"; ctx.lineWidth=2; ctx.beginPath();
-      const p0 = toCXabs(pts[0]); ctx.moveTo(p0.x,p0.y);
-      for(let i=1;i<pts.length;i++){ const pi = toCXabs(pts[i]); ctx.lineTo(pi.x,pi.y); }
-      ctx.stroke();
-      ctx.fillStyle="#fbbf24";
-      pts.forEach((q,i)=>{ const pq = toCXabs(q); ctx.beginPath(); ctx.arc(pq.x,pq.y,4,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle="#ffd48a"; ctx.font = "12px system-ui, Segoe UI, sans-serif"; const label = (i===0?"S":i===1?"Dk":"De"); ctx.fillText(label, pq.x+6, pq.y-6); ctx.fillStyle="#fbbf24"; });
+
+  // [ADD] 인게임 “지금만” 시뮬 미리보기
+  drawIngamePreview(getPreviewNowSec());
+}
+
+/* ---------- [ADD] Ingame Preview helpers ---------- */
+function lerp(a,b,t){ return a + (b - a) * t; }
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function within(t,a,b,pad=0){ return t >= (a - pad) && t <= (b + pad); }
+// c: 0~2 (왼→오), r: 0~2 (아래=0, 위=2)  ← 기존 인덱싱을 유지
+function cellToAbsPos(c, r) {
+  const centerX = GRID_LEFT + GRID_CELL * (0.5 + c);        // 648 + 108 + 216*c → 756, 972, 1188
+  const centerY = GRID_TOP  + GRID_CELL * (0.5 + (2 - r));  // r=2(위): 324, r=1: 540, r=0: 756
+  return { x: centerX, y: centerY };
+}
+// 교체: px 그대로 받고 내부에서만 스케일
+function drawCircleAbs(ctx, abs, radiusPx, stroke="#fff", fill=null, lineW=2){
+  const p = toCXabs(abs);
+  const s = (getAR().w / REF_W);
+  ctx.save();
+  ctx.lineWidth = lineW;
+  ctx.strokeStyle = stroke;
+  if (fill) ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, Math.max(0.5, radiusPx * s), 0, Math.PI*2);
+  if (fill) ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 교체: sizePx 그대로 받고 내부에서만 스케일
+function drawRectAbs(ctx, centerAbs, sizePx, stroke="#fff", fill=null, lineW=2, radius=8){
+  const p = toCXabs(centerAbs);
+  const s = (getAR().w / REF_W);
+  const w = sizePx * s, h = sizePx * s;
+  const x = p.x - w/2, y = p.y - h/2;
+  const r = Math.min(radius*s, Math.min(w,h)/2);
+  ctx.save();
+  ctx.lineWidth = lineW;
+  ctx.strokeStyle = stroke;
+  if (fill) ctx.fillStyle = fill;
+  if (r>0){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,  x+w,y+h, r);
+    ctx.arcTo(x+w,y+h,x,  y+h, r);
+    ctx.arcTo(x,  y+h,x,  y,   r);
+    ctx.arcTo(x,  y,  x+w,y,   r);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    ctx.stroke();
+  }else{
+    if (fill) ctx.fillRect(x,y,w,h);
+    ctx.strokeRect(x,y,w,h);
+  }
+  ctx.restore();
+}
+
+function drawLineAbs(ctx, aAbs, bAbs, stroke="#fff", lineW=2, dash=null){
+  const a=toCXabs(aAbs), b=toCXabs(bAbs);
+  ctx.save();
+  ctx.lineWidth=lineW; ctx.strokeStyle=stroke; if(dash) ctx.setLineDash(dash);
+  ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  ctx.restore();
+}
+function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+function polyLengths(pts){ const L=[0]; let acc=0; for(let i=1;i<pts.length;i++){ acc+=dist(pts[i-1],pts[i]); L.push(acc);} return { total:acc, prefix:L }; }
+function pointOnPolyline(pts, ratio){
+  if(!pts || pts.length===0) return {x:0,y:0};
+  if(pts.length===1) return pts[0];
+  const { total, prefix } = polyLengths(pts);
+  const target = total * clamp01(ratio);
+  let i=1; while(i<prefix.length && prefix[i] < target) i++;
+  const i0 = Math.max(1, i);
+  const segStart = pts[i0-1], segEnd = pts[i0];
+  const segBase = prefix[i0-1], segLen = Math.max(1e-6, prefix[i0]-prefix[i0-1]);
+  const t = (target - segBase) / segLen;
+  return { x: lerp(segStart.x, segEnd.x, t), y: lerp(segStart.y, segEnd.y, t) };
+}
+function getPreviewNowSec(){
+  // 오디오가 로드되어 있고 재생·정지 상관없이 currentTime이 유효하면 그것을 사용
+  if (window.audio && isFinite(audio.currentTime) && (audio.duration||0) > 0) {
+    return audio.currentTime;
+  }
+  // 아니면 파형/스크럽에서 관리하는 커서값(없다면 0)
+  const t = parseFloat(document.querySelector("#timeScrub")?.value || "0");
+  return isFinite(t) ? t : 0;
+}
+
+
+// 교체: drawIngamePreview 내부 Grid/Circle/Slider/Bullet 분기
+function drawIngamePreview(nowSec){
+  const s = (getAR().w / REF_W);
+
+  const gridTargetPx = resolveGridTargetPx();
+  const gridGrowSec  = resolveGridGrowPxPerSec();        // px/s
+  const gridLeadSec  = gridTargetPx / gridGrowSec;       // s
+
+  const circleLeadSec = resolveCircleLeadSec();
+  const sliderLeadSec = resolveSliderLeadSec();
+  const circleR       = Math.max(1, num($("#circleTargetRadius").value));
+
+  for (const n of chart.notes){
+
+    // --- GRID: 사각형, 서로 "중앙에서" 맞닿도록 모드 선택 ---
+    if (n.type === "Grid"){
+      const tJ = getNoteTimeSec(n), tS = tJ - gridLeadSec;
+      if (nowSec < tS-0.2 || nowSec > tJ+0.2) continue;
+
+      const pos  = cellToAbsPos(n.cell.x, n.cell.y);
+      const size = clamp((nowSec - tS) * gridGrowSec, 0, gridTargetPx); // px
+      drawRectAbs(ctx, pos, size, "#6ee7b7", null, 3*s, 8);
+      drawRectAbs(ctx, pos, gridTargetPx, "rgba(110,231,183,0.35)", null, 1.5*s, 8);
+      if (Math.abs(nowSec - tJ) < 0.05){
+        drawRectAbs(ctx, pos, gridTargetPx*1.06, "#66d9ef", "rgba(102,217,239,0.1)", 3*s, 10);
+      }
+    }
+
+    // --- CIRCLE: 반지름(px) 기준, 접근 링 → 판정 ---
+    else if (n.type === "CircleTap"){
+      const tJ = getNoteTimeSec(n), tS = tJ - circleLeadSec;
+      if (nowSec < tS-0.2 || nowSec > tJ+0.2) continue;
+
+      const pos  = n.absPos || {x:REF_W/2,y:REF_H/2};
+      const prog = clamp((nowSec - tS)/Math.max(1e-6, circleLeadSec), 0, 1);
+      const ringR = lerp(circleR*1.6, circleR, prog);
+
+      drawCircleAbs(ctx, pos, ringR,   "#fbbf24", null, 2*s);
+      drawCircleAbs(ctx, pos, circleR, "#6ee7b7", "rgba(110,231,183,0.12)", 2*s);
+      if (Math.abs(nowSec - tJ) < 0.05){
+        drawCircleAbs(ctx, pos, circleR*1.12, "#66d9ef", "rgba(102,217,239,0.08)", 3*s);
+      }
+    }
+
+    // --- SLIDER: 리드 동안 헤드 고정 → 시작 이후 진행, 헤드 크기 = Circle과 동일 ---
+    else if (n.type === "Slider"){
+      const pts = n.absPath || [];
+      if (pts.length < 2) continue;
+
+      const durSec = getSliderDurationSec(n);
+      const tStart = getSliderStartSec(n);
+      const tEnd   = tStart + durSec;
+      const tSpawn = tStart - sliderLeadSec;
+      if (nowSec < tSpawn-0.2 || nowSec > tEnd+0.2) continue;
+
+      // 전체 경로(옅게)
+      ctx.save(); ctx.lineWidth=4*s; ctx.strokeStyle="rgba(185,194,217,0.25)";
+      const p0 = toCXabs(pts[0]); ctx.beginPath(); ctx.moveTo(p0.x,p0.y);
+      for (let i=1;i<pts.length;i++){ const p=toCXabs(pts[i]); ctx.lineTo(p.x,p.y); }
+      ctx.stroke(); ctx.restore();
+
+           if (nowSec < tStart) {
+       const head0 = pts[0];
+       const leadDur = Math.max(1e-6, sliderLeadSec);
+       const progLead = clamp((nowSec - tSpawn) / leadDur, 0, 1); // 0→1
+      const ringR   = lerp(circleR * 1.8, circleR, progLead);    // 큰 원 → 타깃 반경
+       // 바깥(접근) 링
+       drawCircleAbs(ctx, head0, ringR,   "rgba(251,191,36,0.85)", null, 2*s);
+       // 타깃(정박) 링 희미하게
+       drawCircleAbs(ctx, head0, circleR, "rgba(110,231,183,0.7)", "rgba(110,231,183,0.10)", 2*s);
+     }
+
+
+
+           // === [NEW] 리드(접근) 구간: 테두리가 "다가오는" 효과 ===
+
+
+      let head = pts[0];
+      if (nowSec >= tStart){
+        const r = clamp((nowSec - tStart)/Math.max(1e-6, durSec), 0, 1);
+        head = pointOnPolyline(pts, r);
+
+        // 진행 강조
+        const { total, prefix } = polyLengths(pts);
+        const target = total * r;
+        ctx.save(); ctx.lineWidth=6*s; ctx.strokeStyle="#6ee7b7"; ctx.beginPath(); let moved=false;
+        for (let i=1;i<pts.length;i++){
+          const a=pts[i-1], b=pts[i], segS=prefix[i-1], segE=prefix[i];
+          const aC=toCXabs(a), bC=toCXabs(b);
+          if (segE <= target){ if(!moved){ ctx.moveTo(aC.x,aC.y); moved=true; } ctx.lineTo(bC.x,bC.y); }
+          else if (segS < target && segE > target){
+            const t=(target-segS)/Math.max(1e-6, segE-segS);
+            const mid={x:lerp(a.x,b.x,t), y:lerp(a.y,b.y,t)}, midC=toCXabs(mid);
+            if(!moved){ ctx.moveTo(aC.x,aC.y); moved=true; } ctx.lineTo(midC.x,midC.y); break;
+          }
+        }
+        ctx.stroke(); ctx.restore();
+      }
+      // 헤드(리드 중엔 시작점 고정, 시작 후엔 진행 위치). 크기 = circleR
+      drawCircleAbs(ctx, head, circleR, "#66d9ef", "rgba(102,217,239,0.25)", 3*s);
+    }
+
+    // --- BULLET: 크기 설정 가능(기본 64px 지름) ---
+    else if (n.type === "Bullet"){
+        const t0 = getBulletSpawnSec(n);
+          const toDock = getBulletToDockSec(n);
+  const dockToDespawn = getBulletDockToDespawnSec(n);
+  const t1 = t0 + toDock;
+  const t2 = t1 + dockToDespawn;
+      if (nowSec < t0-0.2 || nowSec > t2+0.2) continue;
+      const S=n.bulletSpawnPos, D=n.bulletDockPos, E=n.bulletDespawnPos;
+
+      const bulletDiameter = Math.max(1, num($("#bulletSize")?.value || "64")); // px
+      const bulletR = bulletDiameter * 0.5;
+
+      drawLineAbs(ctx,S,D,"rgba(217,188,90,0.25)",2*s,[6,6]);
+      drawLineAbs(ctx,D,E,"rgba(217,188,90,0.18)",2*s,[6,6]);
+
+      let cur;
+      if (nowSec < t1){
+        const r=clamp((nowSec - t0)/Math.max(1e-6,t1-t0),0,1);
+        cur = { x: lerp(S.x,D.x,r), y: lerp(S.y,D.y,r) };
+      } else {
+        const r=clamp((nowSec - t1)/Math.max(1e-6,t2-t1),0,1);
+        cur = { x: lerp(D.x,E.x,r), y: lerp(D.y,E.y,r) };
+      }
+      drawCircleAbs(ctx, cur, bulletR, "#fbbf24", "rgba(251,191,36,0.25)", 2*s);
+      if (Math.abs(nowSec - t1) < 0.05){
+        drawCircleAbs(ctx, D, bulletR*1.3, "#ffd48a", "rgba(255,212,138,0.15)", 3*s);
+      }
     }
   }
+}
+
+
+function beatsToSec(b){ return b * spb(); }
+
+function getSliderStartSec(n){
+  // timeMode에 따라 beats 우선 혹은 sec 우선 (기존 getNoteTimeSec과 동일 정책)
+  const byBeats = $("#timeMode").value === "Beats";
+  if (byBeats) return (isFinite(n.startBeat) ? beatsToSec(n.startBeat) : (n.startTime||0));
+  return (isFinite(n.startTime) ? n.startTime : (isFinite(n.startBeat) ? beatsToSec(n.startBeat) : 0));
+}
+
+function getSliderDurationSec(n){
+  const byBeats = $("#timeMode").value === "Beats";
+  if (byBeats) return (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration||0));
+  return (isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0));
+}
+
+// 불릿 구간도 동일하게 초로 환산
+function getBulletSpawnSec(n){
+  const byBeats = $("#timeMode").value === "Beats";
+  if (byBeats) return (isFinite(n.bulletSpawnBeat) ? beatsToSec(n.bulletSpawnBeat) : (n.bulletSpawnTime||0));
+  return (isFinite(n.bulletSpawnTime) ? n.bulletSpawnTime : (isFinite(n.bulletSpawnBeat) ? beatsToSec(n.bulletSpawnBeat) : 0));
+}
+function getBulletToDockSec(n){
+  const byBeats = $("#timeMode").value === "Beats";
+  if (byBeats) return (isFinite(n.bulletToDockBeats) ? beatsToSec(n.bulletToDockBeats) : (n.bulletToDockDuration||0));
+  return (isFinite(n.bulletToDockDuration) ? n.bulletToDockDuration : (isFinite(n.bulletToDockBeats) ? beatsToSec(n.bulletToDockBeats) : 0));
+}
+function getBulletDockToDespawnSec(n){
+  const byBeats = $("#timeMode").value === "Beats";
+  if (byBeats) return (isFinite(n.bulletDockToDespawnBeats) ? beatsToSec(n.bulletDockToDespawnBeats) : (n.bulletDockToDespawnDuration||0));
+  return (isFinite(n.bulletDockToDespawnDuration) ? n.bulletDockToDespawnDuration : (isFinite(n.bulletDockToDespawnBeats) ? beatsToSec(n.bulletDockToDespawnBeats) : 0));
 }
 
 /* ---------- Slider path helpers ---------- */
@@ -671,22 +946,17 @@ function getNoteTimeSec(n){
 
   const present = v => v != null && isFinite(v);
   const secFromBeats = (beats)=> present(beats) ? beats*S : null;
-  const pick = (primary, fallback)=> present(primary) ? primary : (present(fallback) ? fallback : 0);
+  const pick = (sec, beat)=> {
+    // byBeats면 beat를 우선(초로 변환), 아니면 sec 우선
+    return byBeats ? (present(beat) ? secFromBeats(beat) : (present(sec)?sec:0))
+                   : (present(sec)  ? sec                 : (present(beat)?secFromBeats(beat):0));
+  };
 
-  if(n.type === "Slider"){
-    const sec = n.startTime;
-    const beat = n.startBeat;
-    return byBeats ? pick(secFromBeats(beat), sec) : pick(sec, secFromBeats(beat));
-  }
-  if(n.type === "Bullet"){
-    const sec = n.bulletSpawnTime;
-    const beat = n.bulletSpawnBeat;
-    return byBeats ? pick(secFromBeats(beat), sec) : pick(sec, secFromBeats(beat));
-  }
-  const sec = n.judgeTime;
-  const beat = n.judgeBeat;
-  return byBeats ? pick(secFromBeats(beat), sec) : pick(sec, secFromBeats(beat));
+  if(n.type === "Slider") return pick(n.startTime, n.startBeat);
+  if(n.type === "Bullet") return pick(n.bulletSpawnTime, n.bulletSpawnBeat);
+  return pick(n.judgeTime, n.judgeBeat);
 }
+
 function getNoteTimeBeats(n){
   const S = spb();
   const byBeats = $("#timeMode").value === "Beats";
@@ -710,13 +980,14 @@ function getNoteTimeBeats(n){
   return byBeats ? pick(beat, beatsFromSec(sec)) : pick(beatsFromSec(sec), beat);
 }
 function spawnSecOf(n){
-  const circleLead=num($("#circleLead").value), sliderLead=num($("#sliderLead").value),
-        gridTarget=num($("#gridTarget").value), gridGrow=Math.max(0.0001,num($("#gridGrow").value)),
-        gridLead=gridTarget/gridGrow;
-  if(n.type==="Grid") return getNoteTimeSec(n)-gridLead;
-  if(n.type==="CircleTap") return getNoteTimeSec(n)-circleLead;
-  if(n.type==="Slider") return getNoteTimeSec(n)-sliderLead;
-  if(n.type==="Bullet") return getNoteTimeSec(n);
+  const gridTargetPx = resolveGridTargetPx();
+  const gridGrowSec  = resolveGridGrowPxPerSec();       // px/s
+  const gridLeadSec  = gridTargetPx / gridGrowSec;      // s
+
+  if (n.type === "Grid")      return getNoteTimeSec(n) - gridLeadSec;
+ if (n.type === "CircleTap") return getNoteTimeSec(n) - resolveCircleLeadSec();
+ if (n.type === "Slider")    return getNoteTimeSec(n) - resolveSliderLeadSec();
+  if (n.type === "Bullet")    return getNoteTimeSec(n);
   return getNoteTimeSec(n);
 }
 function sortByCreation(){ ensureCreatedAt(); chart.notes.sort((a,b)=> (a._createdAt||0)-(b._createdAt||0)); renderNotes(); }
@@ -1002,6 +1273,61 @@ function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv){
     }
   }
 }
+
+// === Beat/Sec conversion helpers (추가) ===
+function spb(){                 // 1 beat = ? sec
+  const bpm = num($("#bpm").value);
+  return bpm > 0 ? 60 / bpm : 0;
+}
+function beatsToSec(beats){ return beats * spb(); }
+function secToBeats(sec){ const s = spb(); return s>0 ? sec / s : 0; }
+
+// === Lead seconds resolver (추가) ===
+// Circle/Slider 리드는 timeMode에 따라 beats 또는 seconds 해석
+function resolveCircleLeadSec(){
+  if ($("#timeMode").value === "Beats") {
+    const b = num($("#circleLeadBeats").value);
+    if (b > 0) return beatsToSec(b);
+  }
+  return num($("#circleLead").value); // seconds fallback
+}
+function resolveSliderLeadSec(){
+  if ($("#timeMode").value === "Beats") {
+    const b = num($("#sliderLeadBeats").value);
+    if (b > 0) return beatsToSec(b);
+  }
+  return num($("#sliderLead").value); // seconds fallback
+}
+
+// === Grid grow speed resolver (추가) ===
+// gridGrowUnit=pxps → 그대로(px/s)
+// gridGrowUnit=pxpbeat → px/s 로 변환(px/beat × BPM/60)
+function resolveGridGrowPxPerSec(){
+  const grow = num($("#gridGrow").value);
+  const unit = $("#gridGrowUnit")?.value || "pxps";
+  if (unit === "pxpbeat") {
+    const bpm = num($("#bpm").value);
+    return grow * (bpm / 60); // px/s
+  }
+  return grow; // px/s
+}
+
+// === Grid 타깃 해석: 모드에 따라 px로 환산 ===
+function resolveGridTargetPx(){
+  const mode = $("#gridTargetMode")?.value || "px";
+  if (mode === "spacingX") return GRID_CELL;  // 216px
+  if (mode === "spacingY") return GRID_CELL;  // 216px
+  return num($("#gridTarget").value);         // absolute px
+}
+
+
+// === Grid 타깃 해석: 모드에 따라 px로 환산 (추가) ===
+function cellToAbsPos(c, r) {
+  const centerX = GRID_LEFT + GRID_CELL * (0.5 + c);        // 756, 972, 1188
+  const centerY = 1080 - (GRID_TOP  + GRID_CELL * (0.5 + (2 - r)));  // r=0→아래, r=2→위
+  return { x: centerX, y: centerY };
+}
+
 function beatInfoAt(t){
   const bpm=num($("#bpm").value); if(bpm<=0) return {valid:false,text:"-"};
   const spb=60/bpm, off=computeOffsetSeconds(); const beats=(t-off)/spb;
@@ -1155,6 +1481,7 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
 
 
 
