@@ -167,6 +167,10 @@
     <div class="row"><label>Time Mode</label>
       <select id="timeMode"><option value="Seconds">Seconds</option><option value="Beats">Beats</option></select>
     </div>
+<div class="row"><label>Song Duration (sec)</label>
+  <input id="durationSec" type="number" value="0" step="0.001">
+</div>
+
     <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"></div>
     <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"></div>
     <div class="row"><label>Artist</label><input id="artist" type="text" value="Unknown"></div>
@@ -269,6 +273,16 @@
           <option value="16">1/16</option>
         </select>
       </label>
+      <label class="mini">Speed
+  <select id="playbackRate">
+    <option value="0.25">0.25×</option>
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1.0×</option>
+    <option value="1.5">1.5×</option>
+    <option value="2">2.0×</option>
+  </select>
+</label>
+
       <label class="mini"><input id="snap" type="checkbox" checked> Snap</label>
       <span class="sep"></span>
       <button id="zoomInBtn" disabled>Zoom+</button>
@@ -1224,18 +1238,19 @@ async function exportSongZip(){
     chartsFolder.file("Normal.chart.json", chartJson);
 
     // song.json
-    const songMeta = {
-      title,
-      artist,
-      bpm: num($("#bpm").value),
-      previewStart: num($("#previewStart")?.value || 0),
-      previewDuration: num($("#previewDuration")?.value || 0),
-      coverImage: "cover.jpg",
-      bgVideo: "",
-      fmodEvent: ($("#fmodEvent")?.value || ""),
-      difficulties: [{ name:"Normal", path:"charts/Normal.chart.json", level:1 }],
-      tags: ($("#tags")?.value || "").split(",").map(t=>t.trim()).filter(Boolean)
-    };
+const songMeta = {
+  title,
+  artist,
+  bpm: num($("#bpm").value),
+  previewStart: num($("#previewStart")?.value || 0),
+  previewDuration: num($("#previewDuration")?.value || 0),
+  coverImage: "cover.jpg",
+  bgVideo: "",
+  fmodEvent: ($("#fmodEvent")?.value || ""), 
+  durationSec: num($("#durationSec")?.value || 0),
+  difficulties: [{ name:"Normal", path:"charts/Normal.chart.json", level:1 }],
+  tags: ($("#tags")?.value || "").split(",").map(t=>t.trim()).filter(Boolean)
+};
     root.file("song.json", JSON.stringify(songMeta, null, 2));
 
     // cover
@@ -1534,6 +1549,41 @@ function snapTime(t){
   const rel=(t-off)/spb; const snapped=Math.round(rel*subdiv)/subdiv; return off+snapped*spb;
 }
 function redrawBeat(){ const t=audioEl.currentTime||0; const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-"; drawWave(); }
+
+const rateSelect = $("#playbackRate");
+
+// 일부 브라우저는 피치 보존 플래그가 다릅니다.
+function applyPreservePitch(audio, on=true){
+  try {
+    if ('preservesPitch' in audio) audio.preservesPitch = on;
+    if ('mozPreservesPitch' in audio) audio.mozPreservesPitch = on;
+    if ('webkitPreservesPitch' in audio) audio.webkitPreservesPitch = on;
+  } catch {}
+}
+
+function setPlaybackRate(r){
+  const rate = (r && isFinite(r)) ? r : 1;
+  audioEl.playbackRate = rate;
+  // 편집용: 음정은 그대로, 속도만 변경 (가능한 브라우저에서)
+  applyPreservePitch(audioEl, true);
+  // 필요하면 배속 표기 갱신용 배지 등을 업데이트
+  // (예) document.querySelector("#rateBadge")?.textContent = `${rate.toFixed(2)}×`;
+}
+
+// 배속 셀렉트 변경 시 반영
+rateSelect?.addEventListener("change", e => {
+  setPlaybackRate(parseFloat(e.target.value));
+});
+
+// 오디오 로드되면 기본 배속 1.0으로 초기화
+audioFileInput.addEventListener("change", ()=>{
+  // 파일 설정은 기존 onloadedmetadata에서 처리되므로 여기서는 배속만 초기화
+  setPlaybackRate(parseFloat(rateSelect?.value || "1") || 1);
+});
+
+// 초기 세팅(페이지 로드 직후)
+setPlaybackRate(1);
+
 
 /* ---------- Utils ---------- */
 function num(v){ const x=parseFloat(v||"0"); return isNaN(x)?0:x; }
