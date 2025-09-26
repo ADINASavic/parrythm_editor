@@ -345,6 +345,51 @@ const REF_W = 1920;
 const REF_H = 1080;
 
 /* ---------- 상태 ---------- */
+
+window.onerror = (msg, src, line, col, err) => {
+  console.groupCollapsed("[onerror]", msg);
+  console.log("src", src, "line", line, "col", col);
+  console.error(err);
+  console.groupEnd();
+};
+window.onunhandledrejection = (e) => {
+  console.groupCollapsed("[unhandledrejection]");
+  console.error(e.reason || e);
+  console.groupEnd();
+};
+
+let DBG = true; // 필요시 false
+function dlog(tag, obj){ if(!DBG) return; console.log(`[DBG] ${tag}`, obj||""); }
+
+// 화면 우상단에 디버그 배지
+(function(){
+  const div = document.createElement("div");
+  div.id = "dbgBadge";
+  div.style.cssText = "position:fixed;right:8px;top:8px;z-index:9999;background:#111a30;color:#cfe4ff;border:1px solid #264463;border-radius:6px;padding:6px 8px;font:12px/1.2 system-ui;white-space:pre;";
+  div.textContent = "dbg: init…";
+  document.addEventListener("DOMContentLoaded", ()=> document.body.appendChild(div));
+})();
+function setDbg(text){
+  const el = document.getElementById("dbgBadge");
+  if (el) el.textContent = text;
+}
+
+function snapshotState(extra={}){
+  const span = (viewEnd - viewStart);
+  return {
+    span, viewStart, viewEnd,
+    audioEl_dur: audioEl?.duration || 0,
+    AC_buf_dur: (typeof AC_buf !== "undefined" && AC_buf) ? AC_buf.duration : 0,
+    audioBuffer_dur: audioBuffer?.duration || 0,
+    audioEl_ct: audioEl?.currentTime || 0,
+    nowAccurate: (typeof getNowAccurate === "function") ? getNowAccurate() : null,
+    isPanning, dragSelecting,
+    ...extra
+  };
+}
+
+
+
 let chart = {
   schemaVersion: 2,
   title:"New Chart", bpm:120, timeMode:"Seconds",
@@ -706,6 +751,19 @@ function drawIngamePreview(nowSec){
     }
   }
 }
+
+// 정확 모드면 WebAudio 시계, 아니면 HTMLAudio 시계
+function nowSec(){
+  return (AC_enabled && AC_buf && AC_src)
+    ? getNowAccurate()
+    : (audioEl.currentTime || 0);
+}
+
+function nowSecQms(){
+  const t = nowSec();
+  return (typeof qms === "function") ? qms(t) : t;
+}
+
 
 function noteTimeWindowSec(n){
   if(n.type==="Slider"){
@@ -1275,6 +1333,149 @@ const songMeta = {
 }
 
 /* ---------- Waveform ---------- */
+function setWaveControlsEnabled(on = true){
+  [playBtn, pauseBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
+    if (b) b.disabled = !on;
+  });
+}
+// --- Accurate transport state (WebAudio) ---
+let AC = null;                 // AudioContext
+let AC_buf = null;             // AudioBuffer
+let AC_src = null;             // BufferSource
+let AC_startCtxT = 0;          // context 기준 시작 시각
+let AC_startOffset = 0;        // 곡 내 오프셋(초)
+let AC_rate = 1.0;             // 배속
+let AC_enabled = true;         // 정확 모드 on/off 스위치
+const MIN_VIEW_SPAN_SEC   = 0.01; // 최소 가시 구간 20ms (원하면 0.005s도 가능)
+const KEY_PAN_FRAC        = 0.05; // ← 기본 좌우 이동: 현재 구간의 5%
+const KEY_PAN_FRAC_FAST   = 0.20; // ← Alt+Arrow: 20%
+const KEY_PAN_FRAC_SLOW   = 0.01; // ← Ctrl+Arrow: 1%
+
+function ensureAC(){
+  if (AC && AC.state !== 'closed') return AC;
+  AC = new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+  return AC;
+}
+
+function stopAccurate(){
+  if (AC_src){
+    try { AC_src.stop(); } catch {}
+    try { AC_src.disconnect(); } catch {}
+  }
+  AC_src = null;
+}
+
+function playAccurate(startAtSec = null){
+  dlog?.("playAccurate.in", {startAtSec});
+  if (!AC_enabled || !AC_buf) { audioEl.play(); return; }
+
+  const ac = ensureAC();
+
+  // ★ 일부 브라우저는 첫 클릭 이후에도 suspended → 반드시 resume 시도
+  if (ac.state === "suspended") {
+    try { ac.resume(); } catch(e){ console.warn("AC.resume failed", e); }
+  }
+
+  if (startAtSec != null){
+    AC_startOffset = qms(Math.max(0, Math.min(startAtSec, AC_buf.duration)));
+  }
+  stopAccurate();
+
+  AC_src = ac.createBufferSource();
+  AC_src.buffer = AC_buf;
+  AC_src.playbackRate.value = AC_rate;
+  AC_src.connect(ac.destination);
+
+  const safety = Math.max(0.03, (ac.baseLatency||0.02) + (ac.outputLatency||0));
+  const when = ac.currentTime + safety;
+
+  AC_startCtxT = when;
+  AC_src.start(when, AC_startOffset);
+
+  // ★ UI 갱신 루프 보장
+  scheduleAccurateUiLoop();
+
+  dlog?.("playAccurate.out", snapshotState());
+}
+
+function pauseAccurate(){
+  dlog("pauseAccurate");
+  if (!AC_enabled || !AC_buf) { audioEl.pause(); return; }
+  const now = getNowAccurate();
+  stopAccurate();
+  AC_startOffset = now;
+}
+
+function seekAccurate(toSec){
+  dlog?.("seekAccurate.in", {toSec});
+  if (!AC_enabled || !AC_buf){
+    const dur = getDuration();
+    const t = Math.max(0, Math.min(toSec, dur));
+    audioEl.currentTime = t;
+
+    // ★ 정지 상태면 timeupdate가 바로 안 올 수 있으니 즉시 갱신
+    const tt = qms(t);
+    curTimeEl.textContent = tt.toFixed(3);
+    window.getPreviewNowSec = () => tt;
+    drawWave();
+    dlog?.("seekAccurate.out", snapshotState());
+    return;
+  }
+  dlog("seekAccurate.in", {toSec});
+  toSec = qms(Math.max(0, Math.min(toSec, (AC_buf?.duration || 0))));
+  if (!AC_enabled || !AC_buf){ audioEl.currentTime = toSec; drawWave(); return; }
+  if (AC_src) playAccurate(toSec);
+  else { AC_startOffset = toSec; drawWave(); }
+  dlog("seekAccurate.out", snapshotState());
+}
+
+function setRateAccurate(r){
+  AC_rate = (r && isFinite(r)) ? r : 1;
+  if (!AC_enabled || !AC_buf){ setPlaybackRate(AC_rate); return; }
+  const pos = getNowAccurate();
+  stopAccurate();
+  const ac = ensureAC();
+  AC_src = ac.createBufferSource();
+  AC_src.buffer = AC_buf;
+  AC_src.playbackRate.value = AC_rate;
+  AC_src.connect(ac.destination);
+
+  const safety = Math.max(0.03, (ac.baseLatency||0.02) + (ac.outputLatency||0));
+  const when = ac.currentTime + safety;
+
+  AC_startCtxT = when;
+  AC_src.start(when, pos);
+  requestAnimationFrame(syncUiAccurate);
+}
+
+function getNowAccurate(){
+  if (!AC_enabled || !AC_buf || !AC_src) return AC_startOffset||0;
+  const acNow = ensureAC().currentTime;
+  const t = (acNow - AC_startCtxT) * AC_rate + AC_startOffset;
+  return Math.max(0, Math.min(t, AC_buf.duration));
+}
+
+function syncUiAccurate(){
+  try{
+    if (!AC_enabled || !AC_buf) return;
+    const t = qms(getNowAccurate());
+    curTimeEl.textContent = t.toFixed(3);
+    const bi = beatInfoAt(t);
+    curBeatEl.textContent = bi.valid ? bi.text : "-";
+    window.getPreviewNowSec = () => t;   // 미리보기 타임 소스 통합
+    drawWave();
+
+    // 끝났으면 루프 종료
+    if (t >= (AC_buf.duration - 1/(AC?.sampleRate||48000))) {
+      stopAccurate();
+      return;
+    }
+  }catch(err){
+    console.error("[syncUiAccurate] crashed:", err);
+    // 크래시한 경우에도 루프가 죽지 않도록 폴백 타이머가 커버함
+  }
+}
+
 const waveCanvas=$("#wave"); const wctx=waveCanvas.getContext("2d");
 const audioEl=$("#audio"); const audioFileInput=$("#audioFile");
 const playBtn=$("#playBtn"), pauseBtn=$("#pauseBtn");
@@ -1285,10 +1486,7 @@ let audioBuffer=null, audioURL=null, viewStart=0, viewEnd=0, isPanning=false, dr
 let dragSelecting=false, dragT0=0, dragT1=0;
 let _rafId = null;
 
-function _tick() { drawWave(); _rafId = requestAnimationFrame(_tick); }
-audioEl.addEventListener("play", () => { if (_rafId) cancelAnimationFrame(_rafId); _tick(); });
-audioEl.addEventListener("pause", () => { if (_rafId) cancelAnimationFrame(_rafId); _rafId = null; });
-audioEl.addEventListener("ended", () => { if (_rafId) cancelAnimationFrame(_rafId); _rafId = null; drawWave(); });
+
 audioEl.addEventListener("seeking", drawWave);
 audioEl.addEventListener("seeked", drawWave);
 audioEl.addEventListener("ratechange", drawWave);
@@ -1301,15 +1499,68 @@ function resizeWaveCanvas(){
 window.addEventListener("resize", resizeWaveCanvas);
 
 audioFileInput.addEventListener("change", async (e)=>{
-  const file=e.target.files?.[0]; if(!file) return;
-  if(audioURL){ URL.revokeObjectURL(audioURL); audioURL=null; }
-  audioURL=URL.createObjectURL(file); audioEl.src=audioURL;
-  audioEl.onloadedmetadata=()=>{ const d=audioEl.duration||0; durTimeEl.textContent=d.toFixed(3); curTimeEl.textContent="0.000"; const bi=beatInfoAt(0); curBeatEl.textContent=bi.valid?bi.text:"-"; playBtn.disabled=false; pauseBtn.disabled=false; zoomInBtn.disabled=false; zoomOutBtn.disabled=false; fitBtn.disabled=false; viewStart=0; viewEnd=d||0; drawWave(); };
-  const arr=await file.arrayBuffer(); const ac=new (window.AudioContext||window.webkitAudioContext)(); try{ audioBuffer=await ac.decodeAudioData(arr.slice(0)); }catch{ audioBuffer=null; } resizeWaveCanvas();
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  // HTMLAudio에 로드(메타/기본 길이)
+  if (audioURL) { URL.revokeObjectURL(audioURL); audioURL = null; }
+  audioURL = URL.createObjectURL(file);
+  audioEl.src = audioURL;
+
+  audioEl.onloadedmetadata = () => {
+    const d = audioEl.duration || 0;
+    durTimeEl.textContent = d.toFixed(3);
+    viewStart = 0;
+    viewEnd   = d;
+    drawWave();
+    setWaveControlsEnabled(true); // 이 함수는 반드시 위쪽에 선언
+  };
+
+  // === WebAudio로 한 번만 디코드 → 둘 다 재사용 ===
+  try {
+    const wa  = ensureAC();                   // ← 이름을 'ac'가 아닌 'wa'로 (충돌 방지)
+    const arr = await file.arrayBuffer();
+    AC_buf     = await wa.decodeAudioData(arr.slice(0)); // 정확 모드용
+    audioBuffer = AC_buf;                                // 파형 그리기도 같은 버퍼 재사용
+  } catch (err) {
+    console.error("decodeAudioData failed", err);
+    AC_buf = null;
+    audioBuffer = null;
+  }
+
+  // HTMLAudio가 duration을 못 읽는 파일 대비: WebAudio 길이로 보정
+  if ((!isFinite(audioEl.duration) || (audioEl.duration || 0) <= 0) && (AC_buf?.duration > 0)){
+    const d = AC_buf.duration;
+    durTimeEl.textContent = d.toFixed(3);
+    viewStart = 0;
+    viewEnd   = d;
+    drawWave();
+    setWaveControlsEnabled(true);
+  }
+
+  // 캔버스 DPI/크기 반영
+  resizeWaveCanvas();
 });
-playBtn.addEventListener("click",()=>audioEl.play());
-pauseBtn.addEventListener("click",()=>audioEl.pause());
-audioEl.addEventListener("timeupdate", ()=>{ const t=audioEl.currentTime||0; curTimeEl.textContent=t.toFixed(3); const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-";  drawWave();  });
+
+
+playBtn.onclick  = () => { (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
+pauseBtn.onclick = () => { (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
+audioEl.addEventListener("timeupdate", ()=>{
+  const t = qms(audioEl.currentTime || 0);
+  curTimeEl.textContent = t.toFixed(3);
+  window.getPreviewNowSec = () => t;
+  const bi=beatInfoAt(t);
+  curBeatEl.textContent = bi.valid?bi.text:"-";
+  drawWave();
+});
+
+function setWaveControlsEnabled(on=true){
+  [playBtn, pauseBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
+    if (b) b.disabled = !on;
+  });
+}
+
+
 ampScaleInput.addEventListener("input",(e)=>{ ampScale=parseFloat(e.target.value||"0.6")||0.6; drawWave(); });
 
 // 별도 RAF 루프 (안정화)
@@ -1319,21 +1570,94 @@ audioEl.addEventListener("play", () => { if (rafId) cancelAnimationFrame(rafId);
 audioEl.addEventListener("pause", () => { if (rafId) cancelAnimationFrame(rafId); rafId = null; });
 audioEl.addEventListener("ended", () => { if (rafId) cancelAnimationFrame(rafId); rafId = null; drawWave(); });
 
-function getDuration(){ return audioEl.duration || (audioBuffer?audioBuffer.duration:0) || 0; }
+function getDuration(){
+  return (audioEl?.duration || 0)
+      || (AC_buf?.duration || 0)
+      || (audioBuffer?.duration || 0)
+      || 0;
+}
 function ensureViewBounds(){
-  const D=getDuration(); if(D<=0){ viewStart=0; viewEnd=0; return; }
-  const spanMin=Math.min(0.05*D,5);
-  if(viewEnd-viewStart<spanMin){ const c=(viewStart+viewEnd)/2; viewStart=Math.max(0,c-spanMin/2); viewEnd=Math.min(D,c+spanMin/2); }
-  if(viewStart<0){ viewEnd-=viewStart; viewStart=0; }
-  if(viewEnd>D){ const over=viewEnd-D; viewStart=Math.max(0,viewStart-over); viewEnd=D; }
+  const D = getDuration();
+  if (D <= 0){ viewStart = 0; viewEnd = 0; return; }
+
+  const spanMin = Math.max(MIN_VIEW_SPAN_SEC, 0.001);
+  let span = viewEnd - viewStart;
+
+  if (span < spanMin){
+    const c = (viewStart + viewEnd) / 2;
+    viewStart = Math.max(0, c - spanMin/2);
+    viewEnd   = Math.min(D, c + spanMin/2);
+    span      = viewEnd - viewStart;
+  }
+  if (viewStart < 0){ viewEnd -= viewStart; viewStart = 0; }
+  if (viewEnd > D){
+    const over = viewEnd - D;
+    viewStart = Math.max(0, viewStart - over);
+    viewEnd   = D;
+  }
 }
 function timeToX(t){ const span=(viewEnd-viewStart)||1; return ((t-viewStart)/span)*waveCanvas.clientWidth; }
 function xToTime(x){ const span=(viewEnd-viewStart)||1; return viewStart+(x/waveCanvas.clientWidth)*span; }
 
-zoomInBtn.addEventListener("click",()=>{ const c=audioEl.currentTime||(viewStart+viewEnd)/2; zoomAt(c,0.7); });
-zoomOutBtn.addEventListener("click",()=>{ const c=audioEl.currentTime||(viewStart+viewEnd)/2; zoomAt(c,1.4); });
-fitBtn.addEventListener("click",()=>{ const D=getDuration(); viewStart=0; viewEnd=D; drawWave(); });
-function zoomAt(c,f){ const D=getDuration(); if(D<=0) return; const span=(viewEnd-viewStart)||D; const ns=clamp(span*f,D*0.01,D); const lr=(c-viewStart)/span; viewStart=c-ns*lr; viewEnd=viewStart+ns; ensureViewBounds(); drawWave(); }
+zoomInBtn.onclick = () => {
+  const c = (typeof getPreviewNowSec === "function") ? getPreviewNowSec()
+            : (audioEl.currentTime || (viewStart+viewEnd)/2);
+  zoomAt(c, 0.7);
+};
+zoomOutBtn.onclick = () => {
+  const c = (typeof getPreviewNowSec === "function") ? getPreviewNowSec()
+            : (audioEl.currentTime || (viewStart+viewEnd)/2);
+  zoomAt(c, 1.4);
+};
+fitBtn.onclick = () => { const D = getDuration(); viewStart=0; viewEnd=D; drawWave(); };
+function zoomAt(c, f){
+  const D = getDuration(); if (D <= 0) return;
+  const span   = (viewEnd - viewStart) || D;
+  const ns     = clamp(span * f, MIN_VIEW_SPAN_SEC, D);
+  const lr     = (c - viewStart) / span;
+
+  viewStart = c - ns * lr;
+  viewEnd   = viewStart + ns;
+
+  ensureViewBounds();
+  drawWave();
+}
+
+let waveHover = false;
+waveCanvas.addEventListener("mouseenter", ()=> waveHover = true);
+waveCanvas.addEventListener("mouseleave", ()=> waveHover = false);
+
+window.addEventListener("keydown", (e)=>{
+  // 텍스트 입력 중엔 무시
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+  // 좌/우 키만 처리
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+
+  // 슬라이더 편집 충돌 방지: 슬라이더 편집 중이면 Alt 눌렀을 때만 시점이동
+  const sliderEditing = ($("#noteType")?.value === "Slider") && (pathPtsAbs?.length > 0);
+  if (sliderEditing && !e.altKey) return;
+
+  // 파형 위에서만 동작하게 하거나, Alt 키로 강제 동작
+  if (!waveHover && !e.altKey) return;
+
+  const D = getDuration(); if (D <= 0) return;
+
+  const span = Math.max(MIN_VIEW_SPAN_SEC, (viewEnd - viewStart));
+  const frac = e.ctrlKey ? KEY_PAN_FRAC_SLOW : (e.altKey ? KEY_PAN_FRAC_FAST : KEY_PAN_FRAC);
+  const step = span * frac * (e.key === "ArrowLeft" ? -1 : +1);
+
+  // 시점만 이동(구간 길이 유지)
+  const newStart = Math.max(0, Math.min(viewStart + step, D - span));
+  viewStart = newStart;
+  viewEnd   = newStart + span;
+
+  drawWave();
+  e.preventDefault();
+});
+
+
 
 waveCanvas.addEventListener("mousedown",(e)=>{
     if(isPanning||dragSelecting) return;
@@ -1383,11 +1707,32 @@ waveCanvas.addEventListener("wheel",(e)=>{
 },{passive:false});
 
 waveCanvas.addEventListener("click",(e)=>{
-  if(isPanning||dragSelecting) return; if(!audioEl.duration) return;
-  const rect=waveCanvas.getBoundingClientRect(); const x=(e.clientX-rect.left);
-  let t=xToTime(x); audioEl.currentTime=clamp(t,0,getDuration());
-  applyTimeFromWave(t,null); drawWave();
+  if(isPanning||dragSelecting) return;
+
+  const rect = waveCanvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left);
+  const t_raw = xToTime(x);
+  const dur = getDuration();
+  const span = (viewEnd - viewStart);
+
+  dlog("wave.click.before", snapshotState({x, t_raw}));
+
+  if (dur <= 0 || span <= 0){
+    console.warn("[wave.click] invalid dur/span, ignore");
+    return;
+  }
+
+  let t = t_raw;
+  if (!Number.isFinite(t)) t = 0;
+  t = Math.max(0, Math.min(t, dur));
+  if (typeof qms === "function") t = qms(t);
+
+  dlog("wave.click.apply", {t});
+  applyTimeFromWave(t, null); // ★ 핵심
+  dlog("wave.click.after", snapshotState());
 });
+
+
 
 function drawWave(){
   const w=waveCanvas.clientWidth, h=waveCanvas.clientHeight;
@@ -1397,7 +1742,7 @@ function drawWave(){
   const bpm=num($("#bpm").value); const duration=getDuration(), offset=computeOffsetSeconds();
   drawTimeGrid(wctx,w,h,viewStart,viewEnd);
   if(bpm>0 && duration>0){ drawBeatGrid(wctx,w,h,viewStart,viewEnd,bpm,offset,parseInt($("#subdiv").value||"8")); }
-  const t=audioEl.currentTime||0;
+  const t = nowSecQms(); 
   if(t>=viewStart && t<=viewEnd){
     const x=timeToX(t); wctx.strokeStyle="#ffd48a"; wctx.lineWidth=2; wctx.beginPath(); wctx.moveTo(x,0); wctx.lineTo(x,h); wctx.stroke();
     if(audioEl.paused){
@@ -1524,24 +1869,75 @@ function computeOffsetSeconds(){
   if(byBeats && bpm>0){ const beats=num($("#startOffsetBeats").value); return beats*(60/bpm); }
   return num($("#startOffsetSec").value);
 }
-function applyTimeFromWave(t0,t1){
-  const byBeats=$("#timeMode").value==="Beats"; const bpm=num($("#bpm").value); const spb=bpm>0?60/bpm:0;
-  const tOnly=(t)=>{
-    const typ=$("#noteType").value;
-    if(typ==="Grid"){ $("#judgeTimeSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#judgeBeat").value=(t/spb).toFixed(3); }
-    else if(typ==="CircleTap"){ $("#circleJudgeSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#circleJudgeBeat").value=(t/spb).toFixed(3); }
-    else if(typ==="Slider"){ $("#sliderStartSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#sliderStartBeat").value=(t/spb).toFixed(3); }
-    else if(typ==="Bullet"){ $("#bulletStartSec").value=t.toFixed(3); if(byBeats&&spb>0) $("#bulletStartBeat").value=(t/spb).toFixed(3); }
+function applyTimeFromWave(t0, t1){
+  dlog("applyTimeFromWave.in", {t0, t1});
+  if (!isFinite(t0)) return; // 안전 가드
+
+  const byBeats = ($("#timeMode").value === "Beats");
+  const bpm = num($("#bpm").value);
+  const S = (bpm > 0) ? (60 / bpm) : 0;
+
+  const toBeats = (sec) => (S > 0 ? sec / S : 0);
+
+  // 스냅 -> 1ms 양자화
+  const snap1ms = (t) => qms(t);
+
+  const fillSingleTime = (sec) => {
+    const typ = $("#noteType").value;
+    const secStr   = qms(sec).toFixed(3);
+    const beatsStr = (S > 0 ? qms(toBeats(sec)).toFixed(3) : "0.000");
+
+    if (typ === "Grid") {
+      $("#judgeTimeSec").value = secStr;
+      if (S > 0) $("#judgeBeat").value = beatsStr;
+    }
+    else if (typ === "CircleTap") {
+      $("#circleJudgeSec").value = secStr;
+      if (S > 0) $("#circleJudgeBeat").value = beatsStr;
+    }
+    else if (typ === "Slider") {
+      $("#sliderStartSec").value = secStr;
+      if (S > 0) $("#sliderStartBeat").value = beatsStr;
+    }
+    else if (typ === "Bullet") {
+      $("#bulletStartSec").value = secStr;
+      if (S > 0) $("#bulletStartBeat").value = beatsStr;
+    }
+    dlog("applyTimeFromWave.out", snapshotState());
   };
-  if(t1==null){ tOnly(snapTime(t0)); }
-  else{
-    let a=Math.min(t0,t1), b=Math.max(t0,t1); a=snapTime(a); b=snapTime(b);
-    const dur=Math.max(0,b-a); const typ=$("#noteType").value;
-    if(typ==="Slider"){
-      $("#sliderStartSec").value=a.toFixed(3); $("#sliderDurSec").value=dur.toFixed(3);
-      if(byBeats&&spb>0){ $("#sliderStartBeat").value=(a/spb).toFixed(3); $("#sliderDurBeats").value=(dur/spb).toFixed(3); }
-    } else { tOnly(a); }
+
+  const fillRange = (secA, secB) => {
+    const aS = snap1ms(Math.min(secA, secB));
+    const bS = snap1ms(Math.max(secA, secB));
+    const dur = qms(Math.max(0, bS - aS));
+    const typ = $("#noteType").value;
+
+    if (typ === "Slider") {
+      $("#sliderStartSec").value = aS.toFixed(3);
+      $("#sliderDurSec").value   = dur.toFixed(3);
+      if (S > 0) {
+        $("#sliderStartBeat").value = qms(toBeats(aS)).toFixed(3);
+        $("#sliderDurBeats").value  = qms(toBeats(dur)).toFixed(3);
+      }
+    } else {
+      fillSingleTime(aS);
+    }
+    return aS;
+  };
+
+  if (t1 == null) {
+    const t = snap1ms(t0);
+    fillSingleTime(t);
+    if (typeof seekAccurate === "function") seekAccurate(t);
+    else audioEl.currentTime = t;
+  } else {
+    const startSec = fillRange(t0, t1);
+    if (typeof seekAccurate === "function") seekAccurate(startSec);
+    else audioEl.currentTime = startSec;
   }
+
+  redrawBeat();
+  drawWave();
 }
 function snapTime(t){
   if(!$("#snap").checked) return t; const bpm=num($("#bpm").value); if(bpm<=0) return t;
@@ -1570,9 +1966,9 @@ function setPlaybackRate(r){
   // (예) document.querySelector("#rateBadge")?.textContent = `${rate.toFixed(2)}×`;
 }
 
-// 배속 셀렉트 변경 시 반영
 rateSelect?.addEventListener("change", e => {
-  setPlaybackRate(parseFloat(e.target.value));
+  const r = parseFloat(e.target.value) || 1;
+  (AC_enabled && AC_buf) ? setRateAccurate(r) : setPlaybackRate(r);
 });
 
 // 오디오 로드되면 기본 배속 1.0으로 초기화
@@ -1584,8 +1980,43 @@ audioFileInput.addEventListener("change", ()=>{
 // 초기 세팅(페이지 로드 직후)
 setPlaybackRate(1);
 
-
+// --- 1 ms time grid ---
+const MS_GRID = 0.001;
+const qms = (t) => Math.round(t / MS_GRID) * MS_GRID;    // 최근접 1ms
+const qmsFloor = (t) => Math.floor(t / MS_GRID) * MS_GRID;
 /* ---------- Utils ---------- */
+
+let rafAcc = null, accTimer = null;
+
+function scheduleAccurateUiLoop(){
+  // 1) RAF가 돌고 있지 않으면 시작
+  if (!rafAcc){
+    const step = () => {
+      rafAcc = null;
+      try { syncUiAccurate(); } catch(e){ console.error("[syncUiAccurate]", e); }
+      if (AC_src) rafAcc = requestAnimationFrame(step);
+    };
+    rafAcc = requestAnimationFrame(step);
+  }
+  // 2) 혹시 백그라운드 탭 등으로 RAF가 멈출 수 있으니 30Hz 폴백
+  if (!accTimer){
+    accTimer = setInterval(()=>{
+      try { syncUiAccurate(); } catch(e){ console.error("[syncUiAccurate-interval]", e); }
+      if (!AC_src){ clearInterval(accTimer); accTimer = null; }
+    }, 33);
+  }
+}
+
+function stopAccurate(){
+  if (AC_src){
+    try { AC_src.stop(); } catch {}
+    try { AC_src.disconnect(); } catch {}
+  }
+  AC_src = null;
+  if (rafAcc){ cancelAnimationFrame(rafAcc); rafAcc = null; }
+  if (accTimer){ clearInterval(accTimer); accTimer = null; }
+}
+
 function num(v){ const x=parseFloat(v||"0"); return isNaN(x)?0:x; }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function r3(v){ return Math.round(v*1000)/1000; }
@@ -1701,6 +2132,8 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
+
 
 
 
