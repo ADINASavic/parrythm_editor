@@ -61,6 +61,7 @@
         <option value="CircleTap">CircleTap</option>
         <option value="Slider">Slider</option>
         <option value="Bullet">Bullet</option>
+        <option value="Camera">Camera</option>
       </select>
     </div>
 
@@ -151,6 +152,48 @@
       <button id="btnAddBullet" class="primary" onclick="addBullet()">Add Bullet</button>
       <div class="hint">Absolute 캔버스 클릭으로 선택된 target 좌표를 세팅할 수 있습니다.</div>
     </div>
+
+    <!-- [CAMERA] -->
+<div id="cameraInputs" style="display:none">
+  <div class="hint">카메라 트윈: 절대 높이(px) / 각도(도) / 센터(px). 비트/초 중 원하는 축만 체크.</div>
+
+  <div class="row two">
+    <div><label>Start (sec)</label><input id="camStartSec" type="number" step="0.001" value="5.000"></div>
+    <div><label>Duration (sec)</label><input id="camDurSec" type="number" step="0.001" value="0.500"></div>
+  </div>
+  <div class="row two">
+    <div><label>Start (beats)</label><input id="camStartBeat" type="number" step="0.001" value="0.000"></div>
+    <div><label>Duration (beats)</label><input id="camDurBeats" type="number" step="0.001" value="0.000"></div>
+  </div>
+
+  <div class="row"><label class="mini"><input id="camAffectHeight" type="checkbox" checked> Height(px)</label>
+    <input id="camHeightPx" type="number" step="1" value="720">
+  </div>
+  <div class="row"><label class="mini"><input id="camAffectAngle" type="checkbox"> AngleZ(deg)</label>
+    <input id="camAngleDegZ" type="number" step="0.1" value="0">
+  </div>
+  <div class="row"><label class="mini"><input id="camAffectCenter" type="checkbox"> Center (x,y)</label>
+    <input id="camCenterPx" type="text" value="960,540">
+  </div>
+
+  <div class="row two">
+    <div><label>Ease</label>
+      <select id="camEase">
+        <option value="">(default)</option>
+        <option>linear</option>
+        <option>easeInOut</option>
+        <option>quadInOut</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <label class="mini"><input id="camUseBeats" type="checkbox"> Use Beats</label>
+      <label class="mini"><input id="camUseUIScaling" type="checkbox"> UI Scaling</label>
+    </div>
+  </div>
+
+  <button id="btnAddCamera" class="primary" onclick="addCamera()">Add Camera</button>
+</div>
+
 
     <div id="editBar" class="editbar">
       <span class="pill">Editing <span id="editLabel" style="font-weight:700"></span></span>
@@ -250,6 +293,10 @@
                 <option value="1.7777777778" selected>16:9</option>
               </select>
             </label>
+            <label class="mini" style="display:flex;gap:6px;align-items:center">
+              <input id="showCamFrame" type="checkbox" checked>
+              Cam Frame
+            </label>
             <span class="muted">Click: set pos / path / bullet point</span>
           </div>
         </div>
@@ -327,7 +374,7 @@
 
 const WAVE_ROW_H   = 18; // 서브레인 한 칸 높이
 const WAVE_ROW_GAP = 4;
-const WAVE_TYPES = ["Grid","CircleTap","Slider","Bullet"];
+const WAVE_TYPES = ["Grid","CircleTap","Slider","Bullet","Camera"];
 let waveBlocks = [];     // [{x,y,w,h, idx, type, row, t0,t1}]
 
 const GRID_LEFT   = 648;
@@ -418,6 +465,7 @@ $("#noteType").addEventListener("change", e=>{
   $("#circleInputs").style.display = (t==="CircleTap") ? "block":"none";
   $("#sliderInputs").style.display = (t==="Slider") ? "block":"none";
   $("#bulletInputs").style.display = (t==="Bullet") ? "block":"none";
+  $("#cameraInputs").style.display = (t==="Camera") ? "block":"none";
   refreshAddButtons();
 });
 
@@ -480,7 +528,16 @@ view.addEventListener("click", (e)=>{
   const rect=view.getBoundingClientRect(); const sx=view.width/rect.width, sy=view.height/rect.height;
   const mx=(e.clientX-rect.left)*sx, my=(e.clientY-rect.top)*sy;
   const p=fromCXabs(mx,my);
-  const t=$("#noteType").value;
+
+
+  const t = clamp(xToTime(x), 0, dur);
+ applyTimeFromWave(t, null);          // 내부에서 seek 처리
+ const tt = qms(t);                    // 1ms 스냅
+ // ✅ 정지 상태에서도 즉시 눈으로 보이게 강제 업데이트
+ curTimeEl.textContent = tt.toFixed(3);
+ window.getPreviewNowSec = () => tt;
+ redrawBeat();
+ drawWave();
   if(t==="CircleTap"){
     circlePosAbs=p; $("#circlePos").value = `${Math.round(p.x)},${Math.round(p.y)}`;
   }
@@ -530,6 +587,7 @@ function drawView(){
 
   // [ADD] 인게임 “지금만” 시뮬 미리보기
   drawIngamePreview(getPreviewNowSec());
+  drawCameraFrame(getPreviewNowSec());
   drawGridOverlay();
 }
 
@@ -629,7 +687,7 @@ function drawIngamePreview(nowSec){
   const circleLeadSec = resolveCircleLeadSec();
   const sliderLeadSec = resolveSliderLeadSec();
   const circleR       = Math.max(1, num($("#circleTargetRadius").value));
-
+  drawCameraBadges(nowSec);
   for (const n of chart.notes){
 
     // --- GRID: 사각형, 서로 "중앙에서" 맞닿도록 모드 선택 ---
@@ -765,7 +823,21 @@ function nowSecQms(){
 }
 
 
+function getCameraDurSec(n){
+  const byBeats = $("#timeMode").value === "Beats";
+  if (byBeats) return (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration||0));
+  return (isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0));
+}
+
+
+
 function noteTimeWindowSec(n){
+  if(n.type==="Camera"){
+    const t0 = getCameraStartSec(n);
+    const d  = Math.max(0, getCameraDurSec(n));
+    const span = Math.max(d, 0.02); // 최소 폭
+    return { t0, t1: t0 + span };
+  }
   if(n.type==="Slider"){
     const t0 = getSliderStartSec(n);
     const d  = Math.max(0, getSliderDurationSec(n));
@@ -823,6 +895,7 @@ function noteTimeWindowSec(n){
        if(t==="CircleTap"){ fill="rgba(66,180,255,0.20)"; stroke="#44aaff"; }
        if(t==="Slider"){ fill="rgba(102,217,239,0.22)"; stroke="#66d9ef"; }
        if(t==="Bullet"){ fill="rgba(251,191,36,0.24)"; stroke="#fbbf24"; }
+       if(t==="Camera"){ fill="rgba(147,197,253,0.20)"; stroke="#93c5fd"; }
        // 박스
        wctx.save();
        wctx.fillStyle = fill;
@@ -885,23 +958,18 @@ function drawGridOverlay(){
 
 
 function getSliderStartSec(n){
-  // timeMode에 따라 beats 우선 혹은 sec 우선 (기존 getNoteTimeSec과 동일 정책)
-  const byBeats = $("#timeMode").value === "Beats";
-  if (byBeats) return (isFinite(n.startBeat) ? beatsToSec(n.startBeat) : (n.startTime||0));
-  return (isFinite(n.startTime) ? n.startTime : (isFinite(n.startBeat) ? beatsToSec(n.startBeat) : 0));
+  return chartTimeToPlaybackSec({ sec: n.startTime, beat: n.startBeat });
 }
-
 function getSliderDurationSec(n){
-  const byBeats = $("#timeMode").value === "Beats";
-  if (byBeats) return (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration||0));
-  return (isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0));
+  // 지속시간은 오프셋과 무관 → mode 우선순위만 유지
+  const byBeats = ($("#timeMode").value === "Beats");
+  if (byBeats) return isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration || 0);
+  return isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0);
 }
 
 // 불릿 구간도 동일하게 초로 환산
 function getBulletSpawnSec(n){
-  const byBeats = $("#timeMode").value === "Beats";
-  if (byBeats) return (isFinite(n.bulletSpawnBeat) ? beatsToSec(n.bulletSpawnBeat) : (n.bulletSpawnTime||0));
-  return (isFinite(n.bulletSpawnTime) ? n.bulletSpawnTime : (isFinite(n.bulletSpawnBeat) ? beatsToSec(n.bulletSpawnBeat) : 0));
+  return chartTimeToPlaybackSec({ sec: n.bulletSpawnTime, beat: n.bulletSpawnBeat });
 }
 function getBulletToDockSec(n){
   const byBeats = $("#timeMode").value === "Beats";
@@ -1008,6 +1076,41 @@ function addBullet(){
   if($("#bullet3Click").checked){ bulletStage = 0; bulletTemp = { spawn:null, dock:null, despawn:null }; updateBulletStageLabel(); drawView(); }
 }
 
+function addCamera(){
+  if(editIndex!==null) return;
+
+  const startTime = num($("#camStartSec").value);
+  const startBeat = num($("#camStartBeat").value);
+  const duration  = num($("#camDurSec").value);
+  const durationBeats = num($("#camDurBeats").value);
+
+  const camAffectHeight = $("#camAffectHeight").checked;
+  const camAffectAngle  = $("#camAffectAngle").checked;
+  const camAffectCenter = $("#camAffectCenter").checked;
+
+  const camHeightPx  = num($("#camHeightPx").value);
+  const camAngleDegZ = num($("#camAngleDegZ").value);
+  const [xs,ys] = ($("#camCenterPx").value||"960,540").split(",");
+  const camCenterPx = { x: clamp(parseFloat(xs||"960"),0,REF_W),
+                        y: clamp(parseFloat(ys||"540"),0,REF_H) };
+
+  const camEase = ($("#camEase").value||"").trim();
+  const camUseBeats = $("#camUseBeats").checked;
+  const camUseUIScaling = $("#camUseUIScaling").checked;
+
+  // 간단 검증(선택된 축만)
+  if (camAffectHeight && !(camHeightPx>0)) { alert("Height(px) > 0 필요"); return; }
+  if (camAffectCenter && (!isFinite(camCenterPx.x)||!isFinite(camCenterPx.y))) { alert("Center (x,y) 확인"); return; }
+
+  pushNote({
+    type:"Camera",
+    startTime, startBeat, duration, durationBeats,
+    camAffectHeight, camAffectAngle, camAffectCenter,
+    camHeightPx, camAngleDegZ, camCenterPx,
+    camEase, camUseBeats, camUseUIScaling
+  });
+}
+
 function pushNote(obj){ ensureCreatedAt(); obj._id = rid(); obj._createdAt = Date.now(); chart.notes.push(obj); renderNotes(); }
 
 /* ---------- Edit ---------- */
@@ -1038,6 +1141,22 @@ function startEdit(i){
     $("#bulletToDockSec").value = n.bulletToDockDuration??0; $("#bulletToDockBeats").value = n.bulletToDockBeats??0;
     $("#bulletDockToDespawnSec").value = n.bulletDockToDespawnDuration??0; $("#bulletDockToDespawnBeats").value = n.bulletDockToDespawnBeats??0;
   }
+  if(n.type==="Camera"){
+    $("#camStartSec").value  = n.startTime??0;
+    $("#camStartBeat").value = n.startBeat??0;
+    $("#camDurSec").value    = n.duration??0;
+    $("#camDurBeats").value  = n.durationBeats??0;
+    $("#camAffectHeight").checked = !!n.camAffectHeight;
+    $("#camAffectAngle").checked  = !!n.camAffectAngle;
+    $("#camAffectCenter").checked = !!n.camAffectCenter;
+    $("#camHeightPx").value  = n.camHeightPx??720;
+    $("#camAngleDegZ").value = n.camAngleDegZ??0;
+    const cp = n.camCenterPx || {x:960,y:540};
+    $("#camCenterPx").value  = `${Math.round(cp.x)},${Math.round(cp.y)}`;
+    $("#camEase").value      = n.camEase || "";
+    $("#camUseBeats").checked = !!n.camUseBeats;
+    $("#camUseUIScaling").checked = !!n.camUseUIScaling;
+  }
   drawView(); renderNotes(); refreshAddButtons(); updateBulletStageLabel();
 }
 function saveEdit(){
@@ -1062,6 +1181,27 @@ function saveEdit(){
       bulletToDockDuration:num($("#bulletToDockSec").value), bulletToDockBeats:num($("#bulletToDockBeats").value),
       bulletDockToDespawnDuration:num($("#bulletDockToDespawnSec").value), bulletDockToDespawnBeats:num($("#bulletDockToDespawnBeats").value)
     };
+  }else if(t==="Camera"){
+    const camAffectHeight = $("#camAffectHeight").checked;
+    const camAffectAngle  = $("#camAffectAngle").checked;
+    const camAffectCenter = $("#camAffectCenter").checked;
+    const [xs,ys] = ($("#camCenterPx").value||"960,540").split(",");
+    const camCenterPx = { x: clamp(parseFloat(xs||"960"),0,REF_W),
+                          y: clamp(parseFloat(ys||"540"),0,REF_H) };
+    chart.notes[idx] = {
+      ...prev, type:"Camera",
+      startTime:num($("#camStartSec").value),
+      startBeat:num($("#camStartBeat").value),
+      duration:num($("#camDurSec").value),
+      durationBeats:num($("#camDurBeats").value),
+      camAffectHeight, camAffectAngle, camAffectCenter,
+      camHeightPx:num($("#camHeightPx").value),
+      camAngleDegZ:num($("#camAngleDegZ").value),
+      camCenterPx,
+      camEase:($("#camEase").value||"").trim(),
+      camUseBeats: $("#camUseBeats").checked,
+      camUseUIScaling: $("#camUseUIScaling").checked
+    };
   }
   cancelEdit(false); renderNotes();
 }
@@ -1082,6 +1222,8 @@ function refreshAddButtons(){
   $("#btnAddCircle").disabled = editing || $("#noteType").value!=="CircleTap";
   $("#btnAddSlider").disabled = editing || $("#noteType").value!=="Slider";
   $("#btnAddBullet").disabled = editing || $("#noteType").value!=="Bullet";
+  const camBtn = $("#btnAddCamera"); if (camBtn) camBtn.disabled = editing || $("#noteType").value!=="Camera";
+
 }
 
 /* ---------- Notes Table / 정렬 / 드래그 ---------- */
@@ -1109,11 +1251,21 @@ function renderNotes(){
       const d = n.bulletDockPos  || {x:960,y:540};
       const e = n.bulletDespawnPos || {x:1728,y:540};
       data=`S(${Math.round(s.x)},${Math.round(s.y)}) Dk(${Math.round(d.x)},${Math.round(d.y)}) De(${Math.round(e.x)},${Math.round(e.y)})`;
+    }else if(n.type==="Camera"){
+      const flags = [
+        n.camAffectHeight ? `H=${Math.round(n.camHeightPx||0)}px` : null,
+        n.camAffectAngle  ? `A=${fmt(n.camAngleDegZ)}°` : null,
+        n.camAffectCenter ? `C=(${Math.round(n.camCenterPx?.x||960)},${Math.round(n.camCenterPx?.y||540)})` : null
+      ].filter(Boolean).join(" · ");
+      data = flags || "(no axes)";
     }
     const tdData=cel("td","",data);
     let timeTxt="";
     if(n.type==="Slider"){ timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`; }
     else if(n.type==="Bullet"){ timeTxt=`start=${fmt(n.bulletSpawnTime)}/${fmt(n.bulletSpawnBeat)} | toDock=${fmt(n.bulletToDockDuration)}/${fmt(n.bulletToDockBeats)} | dockToDespawn=${fmt(n.bulletDockToDespawnDuration)}/${fmt(n.bulletDockToDespawnBeats)}`; }
+    else if(n.type==="Camera"){
+      timeTxt = `start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
+    }
     else{ timeTxt=`t=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`; }
     const tdTime=cel("td","muted",timeTxt);
     const tdSpawn=cel("td","muted","spawn="+fmt(spawnSecOf(n)));
@@ -1135,20 +1287,14 @@ let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("dra
 /* ---------- 정렬 & 시간 계산 ---------- */
 function spb(){ const bpm = num($("#bpm").value); return bpm>0 ? 60/bpm : 0; }
 function getNoteTimeSec(n){
-  const S = spb();
-  const byBeats = $("#timeMode").value === "Beats";
-
-  const present = v => v != null && isFinite(v);
-  const secFromBeats = (beats)=> present(beats) ? beats*S : null;
-  const pick = (sec, beat)=> {
-    // byBeats면 beat를 우선(초로 변환), 아니면 sec 우선
-    return byBeats ? (present(beat) ? secFromBeats(beat) : (present(sec)?sec:0))
-                   : (present(sec)  ? sec                 : (present(beat)?secFromBeats(beat):0));
-  };
-
-  if(n.type === "Slider") return pick(n.startTime, n.startBeat);
-  if(n.type === "Bullet") return pick(n.bulletSpawnTime, n.bulletSpawnBeat);
-  return pick(n.judgeTime, n.judgeBeat);
+  if (n.type === "Slider") {
+    return chartTimeToPlaybackSec({ sec: n.startTime,  beat: n.startBeat });
+  }
+  if (n.type === "Bullet") {
+    return chartTimeToPlaybackSec({ sec: n.bulletSpawnTime,  beat: n.bulletSpawnBeat });
+  }
+  // Grid / CircleTap
+  return chartTimeToPlaybackSec({ sec: n.judgeTime, beat: n.judgeBeat });
 }
 
 function packIntoRows(intervals){
@@ -1207,6 +1353,8 @@ function spawnSecOf(n){
  if (n.type === "CircleTap") return getNoteTimeSec(n) - resolveCircleLeadSec();
  if (n.type === "Slider")    return getNoteTimeSec(n) - resolveSliderLeadSec();
   if (n.type === "Bullet")    return getNoteTimeSec(n);
+  if (n.type === "Camera") return getCameraStartSec(n);
+  return getNoteTimeSec(n);
   return getNoteTimeSec(n);
 }
 function sortByCreation(){ ensureCreatedAt(); chart.notes.sort((a,b)=> (a._createdAt||0)-(b._createdAt||0)); renderNotes(); }
@@ -1351,6 +1499,11 @@ const KEY_PAN_FRAC        = 0.05; // ← 기본 좌우 이동: 현재 구간의 
 const KEY_PAN_FRAC_FAST   = 0.20; // ← Alt+Arrow: 20%
 const KEY_PAN_FRAC_SLOW   = 0.01; // ← Ctrl+Arrow: 1%
 
+let previewTimeSec = 0;  // 정지 중 커서가 보여줄 시각(초)
+function isPlaying(){
+  return (AC_enabled && !!AC_src) || (!AC_enabled && !audioEl.paused && !audioEl.ended);
+}
+
 function ensureAC(){
   if (AC && AC.state !== 'closed') return AC;
   AC = new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
@@ -1399,53 +1552,81 @@ function playAccurate(startAtSec = null){
 }
 
 function pauseAccurate(){
-  dlog("pauseAccurate");
   if (!AC_enabled || !AC_buf) { audioEl.pause(); return; }
-  const now = getNowAccurate();
+  const now = qms(getNowAccurate());
   stopAccurate();
   AC_startOffset = now;
+  previewTimeSec = now;          // ⟵ 프리뷰 고정
+  curTimeEl.textContent = now.toFixed(3);
+  window.getPreviewNowSec = () => now;
+  redrawBeat();
+  drawWave();
 }
 
 function seekAccurate(toSec){
-  dlog?.("seekAccurate.in", {toSec});
   if (!AC_enabled || !AC_buf){
-    const dur = getDuration();
-    const t = Math.max(0, Math.min(toSec, dur));
+    const d = getDuration();
+    const t = qms(Math.max(0, Math.min(toSec, d)));
     audioEl.currentTime = t;
-
-    // ★ 정지 상태면 timeupdate가 바로 안 올 수 있으니 즉시 갱신
-    const tt = qms(t);
-    curTimeEl.textContent = tt.toFixed(3);
-    window.getPreviewNowSec = () => tt;
+    // 정지 중이면 프리뷰 갱신
+    if (!isPlaying()){
+      previewTimeSec = t;
+      curTimeEl.textContent = t.toFixed(3);
+      window.getPreviewNowSec = () => t;
+    }
+    redrawBeat();
     drawWave();
-    dlog?.("seekAccurate.out", snapshotState());
     return;
   }
-  dlog("seekAccurate.in", {toSec});
-  toSec = qms(Math.max(0, Math.min(toSec, (AC_buf?.duration || 0))));
-  if (!AC_enabled || !AC_buf){ audioEl.currentTime = toSec; drawWave(); return; }
-  if (AC_src) playAccurate(toSec);
-  else { AC_startOffset = toSec; drawWave(); }
-  dlog("seekAccurate.out", snapshotState());
+  const t = qms(Math.max(0, Math.min(toSec, AC_buf.duration)));
+  if (AC_src) {
+    playAccurate(t);             // 재생 중엔 즉시 점프
+  } else {
+    AC_startOffset = t;          // 정지 상태면 위치만 설정
+    previewTimeSec = t;
+    curTimeEl.textContent = t.toFixed(3);
+    window.getPreviewNowSec = () => t;
+    redrawBeat();
+    drawWave();
+  }
 }
 
-function setRateAccurate(r){
+function setRateAccurate(r) {
   AC_rate = (r && isFinite(r)) ? r : 1;
-  if (!AC_enabled || !AC_buf){ setPlaybackRate(AC_rate); return; }
-  const pos = getNowAccurate();
+
+  // HTMLAudio 모드
+  if (!AC_enabled || !AC_buf) {
+    setPlaybackRate(AC_rate);
+    return;
+  }
+
+  const wasPlaying = !!AC_src;
+  const pos = wasPlaying ? getNowAccurate() : (AC_startOffset || 0);
   stopAccurate();
-  const ac = ensureAC();
-  AC_src = ac.createBufferSource();
-  AC_src.buffer = AC_buf;
-  AC_src.playbackRate.value = AC_rate;
-  AC_src.connect(ac.destination);
 
-  const safety = Math.max(0.03, (ac.baseLatency||0.02) + (ac.outputLatency||0));
-  const when = ac.currentTime + safety;
+  if (wasPlaying) {
+    // 재생 중일 때만 다시 시작
+    const ac = ensureAC();
+    AC_src = ac.createBufferSource();
+    AC_src.buffer = AC_buf;
+    AC_src.playbackRate.value = AC_rate;
+    AC_src.connect(ac.destination);
 
-  AC_startCtxT = when;
-  AC_src.start(when, pos);
-  requestAnimationFrame(syncUiAccurate);
+    const safety = Math.max(0.03, (ac.baseLatency || 0.02) + (ac.outputLatency || 0));
+    const when = ac.currentTime + safety;
+    AC_startCtxT = when;
+    AC_startOffset = pos;
+    AC_src.start(when, pos);
+    requestAnimationFrame(syncUiAccurate);
+  } else {
+    // 정지 상태면 위치만 유지, 재생 시작 안 함
+    AC_startOffset = pos;
+    const tt = qms(pos);
+    curTimeEl.textContent = tt.toFixed(3);
+    window.getPreviewNowSec = () => tt;
+    redrawBeat();
+    drawWave();
+  }
 }
 
 function getNowAccurate(){
@@ -1567,7 +1748,15 @@ ampScaleInput.addEventListener("input",(e)=>{ ampScale=parseFloat(e.target.value
 let rafId = null;
 function tick() { drawWave(); rafId = requestAnimationFrame(tick); }
 audioEl.addEventListener("play", () => { if (rafId) cancelAnimationFrame(rafId); tick(); });
-audioEl.addEventListener("pause", () => { if (rafId) cancelAnimationFrame(rafId); rafId = null; });
+audioEl.addEventListener("pause", () => {
+  const t = qms(audioEl.currentTime || 0);
+  previewTimeSec = t;
+  curTimeEl.textContent = t.toFixed(3);
+  window.getPreviewNowSec = () => t;
+  redrawBeat();
+  drawWave();
+});
+
 audioEl.addEventListener("ended", () => { if (rafId) cancelAnimationFrame(rafId); rafId = null; drawWave(); });
 
 function getDuration(){
@@ -1659,22 +1848,38 @@ window.addEventListener("keydown", (e)=>{
 
 
 
-waveCanvas.addEventListener("mousedown",(e)=>{
-    if(isPanning||dragSelecting) return;
-  const rect=waveCanvas.getBoundingClientRect();
-  const x = (e.clientX-rect.left);
-  const y = (e.clientY-rect.top);
-  // 블록 히트 테스트
-  const hit = [...waveBlocks].reverse().find(b => x>=b.x && x<=b.x+b.w && y>=b.y && y<=b.y+b.h);
-  if(hit){
+waveCanvas.addEventListener("click", (e) => {
+  if (isPanning || dragSelecting) return;
+
+  const rect = waveCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  const hit = [...waveBlocks].reverse().find(
+    b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h
+  );
+  if (hit) {
     startEdit(hit.idx);
     return;
   }
- // 기존: 빈 곳 클릭은 시킹
- if(!audioEl.duration) return;
-  let t=xToTime(x); audioEl.currentTime=clamp(t,0,getDuration());
-  applyTimeFromWave(t,null); drawWave();
+
+  const dur = getDuration();
+  if (dur <= 0) return;
+
+  const t = clamp(xToTime(x), 0, dur);
+  applyTimeFromWave(t, null);     // 시킹 + 입력칸 채우기
+  const tt = qms(t);
+
+  // 정지 중일 때는 프리뷰 커서도 즉시 갱신
+  if (!isPlaying()) {
+    previewTimeSec = tt;
+    curTimeEl.textContent = tt.toFixed(3);
+    window.getPreviewNowSec = () => tt;  // (기존 코드와의 호환용)
+    redrawBeat();
+    drawWave();
+  }
 });
+
 
 waveCanvas.addEventListener("mousemove",(e)=>{
   if(isPanning||dragSelecting) return;
@@ -1706,32 +1911,6 @@ waveCanvas.addEventListener("wheel",(e)=>{
   else{ const dt=(viewEnd-viewStart)*(e.deltaY>0?0.05:-0.05); viewStart+=dt; viewEnd+=dt; ensureViewBounds(); drawWave(); }
 },{passive:false});
 
-waveCanvas.addEventListener("click",(e)=>{
-  if(isPanning||dragSelecting) return;
-
-  const rect = waveCanvas.getBoundingClientRect();
-  const x = (e.clientX - rect.left);
-  const t_raw = xToTime(x);
-  const dur = getDuration();
-  const span = (viewEnd - viewStart);
-
-  dlog("wave.click.before", snapshotState({x, t_raw}));
-
-  if (dur <= 0 || span <= 0){
-    console.warn("[wave.click] invalid dur/span, ignore");
-    return;
-  }
-
-  let t = t_raw;
-  if (!Number.isFinite(t)) t = 0;
-  t = Math.max(0, Math.min(t, dur));
-  if (typeof qms === "function") t = qms(t);
-
-  dlog("wave.click.apply", {t});
-  applyTimeFromWave(t, null); // ★ 핵심
-  dlog("wave.click.after", snapshotState());
-});
-
 
 
 function drawWave(){
@@ -1742,7 +1921,9 @@ function drawWave(){
   const bpm=num($("#bpm").value); const duration=getDuration(), offset=computeOffsetSeconds();
   drawTimeGrid(wctx,w,h,viewStart,viewEnd);
   if(bpm>0 && duration>0){ drawBeatGrid(wctx,w,h,viewStart,viewEnd,bpm,offset,parseInt($("#subdiv").value||"8")); }
-  const t = nowSecQms(); 
+  // 기존: const t = nowSecQms();
+  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
+
   if(t>=viewStart && t<=viewEnd){
     const x=timeToX(t); wctx.strokeStyle="#ffd48a"; wctx.lineWidth=2; wctx.beginPath(); wctx.moveTo(x,0); wctx.lineTo(x,h); wctx.stroke();
     if(audioEl.paused){
@@ -1870,60 +2051,67 @@ function computeOffsetSeconds(){
   return num($("#startOffsetSec").value);
 }
 function applyTimeFromWave(t0, t1){
-  dlog("applyTimeFromWave.in", {t0, t1});
-  if (!isFinite(t0)) return; // 안전 가드
+  console.debug("[DBG] applyTimeFromWave.in", {t0, t1});
+  if (!Number.isFinite(t0)) return;
 
-  const byBeats = ($("#timeMode").value === "Beats");
-  const bpm = num($("#bpm").value);
-  const S = (bpm > 0) ? (60 / bpm) : 0;
+  const S   = spb();                     // sec per beat
+  const off = computeOffsetSeconds();    // chart offset (sec)
 
-  const toBeats = (sec) => (S > 0 ? sec / S : 0);
+  const toBeatsUI = (secPlayback) => (S > 0 ? (secPlayback - off) / S : 0);
+  const snap1ms   = (t) => qms(t);       // 1ms 양자화
 
-  // 스냅 -> 1ms 양자화
-  const snap1ms = (t) => qms(t);
-
-  const fillSingleTime = (sec) => {
+  // ✅ 인자 이름과 본문 변수 통일 (secPlayback 사용)
+  function fillSingleTime(secPlayback){
     const typ = $("#noteType").value;
-    const secStr   = qms(sec).toFixed(3);
-    const beatsStr = (S > 0 ? qms(toBeats(sec)).toFixed(3) : "0.000");
+    const secMusical = secPlayback - off;                // UI의 "sec"은 음악적 시각으로 표기
+    const secStr     = qms(secMusical).toFixed(3);
+    const beatStr    = (S>0 ? qms(toBeatsUI(secPlayback)).toFixed(3) : "0.000");
 
     if (typ === "Grid") {
       $("#judgeTimeSec").value = secStr;
-      if (S > 0) $("#judgeBeat").value = beatsStr;
-    }
-    else if (typ === "CircleTap") {
+      if (S>0) $("#judgeBeat").value = beatStr;
+    } else if (typ === "CircleTap") {
       $("#circleJudgeSec").value = secStr;
-      if (S > 0) $("#circleJudgeBeat").value = beatsStr;
-    }
-    else if (typ === "Slider") {
+      if (S>0) $("#circleJudgeBeat").value = beatStr;
+    } else if (typ === "Slider") {
       $("#sliderStartSec").value = secStr;
-      if (S > 0) $("#sliderStartBeat").value = beatsStr;
-    }
-    else if (typ === "Bullet") {
+      if (S>0) $("#sliderStartBeat").value = beatStr;
+    } else if (typ === "Bullet") {
       $("#bulletStartSec").value = secStr;
-      if (S > 0) $("#bulletStartBeat").value = beatsStr;
+      if (S>0) $("#bulletStartBeat").value = beatStr;
+    } else if (typ === "Camera") {
+      $("#camStartSec").value = secStr;
+      if (S>0) $("#camStartBeat").value = beatStr;
     }
-    dlog("applyTimeFromWave.out", snapshotState());
-  };
+  }
 
-  const fillRange = (secA, secB) => {
-    const aS = snap1ms(Math.min(secA, secB));
+  function fillRange(secA, secB){
+    const aS = snap1ms(Math.min(secA, secB));   // playback sec
     const bS = snap1ms(Math.max(secA, secB));
-    const dur = qms(Math.max(0, bS - aS));
-    const typ = $("#noteType").value;
+    const dS = qms(Math.max(0, bS - aS));       // duration in sec (offset 무관)
+    const aMus = aS - off;                      // 음악적 시작 sec
 
+    const typ = $("#noteType").value;
     if (typ === "Slider") {
-      $("#sliderStartSec").value = aS.toFixed(3);
-      $("#sliderDurSec").value   = dur.toFixed(3);
-      if (S > 0) {
-        $("#sliderStartBeat").value = qms(toBeats(aS)).toFixed(3);
-        $("#sliderDurBeats").value  = qms(toBeats(dur)).toFixed(3);
+      $("#sliderStartSec").value = aMus.toFixed(3);
+      $("#sliderDurSec").value   = dS.toFixed(3);
+      if (S>0){
+        $("#sliderStartBeat").value = qms(toBeatsUI(aS)).toFixed(3);
+        $("#sliderDurBeats").value  = qms(dS / S).toFixed(3);
+      }
+    } else if (typ === "Camera") {
+      $("#camStartSec").value = aMus.toFixed(3);
+      $("#camDurSec").value   = dS.toFixed(3);
+      if (S>0){
+        $("#camStartBeat").value = qms(toBeatsUI(aS)).toFixed(3);
+        $("#camDurBeats").value  = qms(dS / S).toFixed(3);
       }
     } else {
+      // 나머지 타입은 단일 시점 → 위 함수 재사용
       fillSingleTime(aS);
     }
     return aS;
-  };
+  }
 
   if (t1 == null) {
     const t = snap1ms(t0);
@@ -1956,6 +2144,117 @@ function applyPreservePitch(audio, on=true){
     if ('webkitPreservesPitch' in audio) audio.webkitPreservesPitch = on;
   } catch {}
 }
+// === [CAMERA PREVIEW] helpers: badge, label, guides ===========================
+function camLabel(n, t0, t1){
+  const parts = [];
+  if (n.camAffectHeight) parts.push(`H=${Math.round(n.camHeightPx)}px`);
+  if (n.camAffectAngle)  parts.push(`A=${fmt(n.camAngleDegZ)}°`);
+  if (n.camAffectCenter) parts.push(`C=(${Math.round(n.camCenterPx?.x||960)},${Math.round(n.camCenterPx?.y||540)})`);
+  const ease = (n.camEase && n.camEase.length) ? ` | ${n.camEase}` : "";
+  return `CAM ${parts.join(" · ")}  |  ${fmt(t0)}→${fmt(t1)}s${ease}`;
+}
+
+function drawBadge(ctx, x, y, text, prog=NaN, maxW=300){
+  ctx.save();
+  ctx.font = "12px system-ui, sans-serif";
+  const padX = 8, padY = 6;
+  const textW = Math.min(ctx.measureText(text).width, maxW - padX*2);
+  const w = textW + padX*2, h = 22;
+  // 배경
+  ctx.fillStyle = "rgba(17,32,51,0.92)";
+  ctx.strokeStyle = "#264463";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x, y, w, h, 6, true, true);
+  // 텍스트 (overflow 시 잘라서 표시)
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x+padX, y, w-padX*2, h); ctx.clip();
+  ctx.fillStyle = "#dfe7ff";
+  ctx.fillText(text, x+padX, y + h - 7);
+  ctx.restore();
+  // 진행바
+  if (!isNaN(prog)){
+    const barY = y + h - 3, barH = 2, barW = w - 2;
+    ctx.fillStyle = "#1b2f47"; ctx.fillRect(x+1, barY, barW, barH);
+    ctx.fillStyle = "#66d9ef"; ctx.fillRect(x+1, barY, Math.max(0, Math.min(barW, barW*prog)), barH);
+  }
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r, fill, stroke){
+  if (w<2*r) r=w/2; if (h<2*r) r=h/2;
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y,   x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x,   y+h, r);
+  ctx.arcTo(x,   y+h, x,   y,   r);
+  ctx.arcTo(x,   y,   x+w, y,   r);
+  if (fill) ctx.fill(); if (stroke) ctx.stroke();
+}
+
+// (옵션) 센터 가이드 크로스헤어
+function drawCenterGuide(ctx, abs, sizePx=28){
+  const a = toCXabs(abs);
+  const s = (getAR().w / REF_W);
+  const half = sizePx * 0.5 * s;
+  ctx.save();
+  ctx.strokeStyle = "rgba(147,197,253,0.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(a.x-half, a.y); ctx.lineTo(a.x+half, a.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(a.x, a.y-half); ctx.lineTo(a.x, a.y+half); ctx.stroke();
+  ctx.restore();
+}
+
+// === [CAMERA PREVIEW] renderer ===============================================
+function drawCameraBadges(nowSec){
+  const ar = getAR();
+  const PAD = 8, maxW = Math.min(360, ar.w * 0.6);
+  let row = 0;
+
+  for (const n of chart.notes){
+    if (n.type !== "Camera") continue;
+
+    const t0 = getCameraStartSec(n);
+    const d  = Math.max(0, getCameraDurSec(n));
+    const t1 = t0 + d;
+
+    // 약간의 패드로 근처에서도 보이게
+    if (nowSec < t0 - 0.2 || nowSec > t1 + 0.2) continue;
+
+    const prog = (d > 1e-6) ? clamp01((nowSec - t0) / d) : 1.0;
+    const text = camLabel(n, t0, t1);
+
+    // 상단 좌측부터 여러 개면 스택
+    const x = ar.x + PAD;
+    const y = ar.y + PAD + row * 26; // 배지 높이(22) + 간격(4)
+    drawBadge(ctx, x, y, text, prog, maxW);
+    if (n.camAffectCenter && n.camCenterPx) {
+      drawCenterGuide(ctx, n.camCenterPx);
+    }
+    row++;
+  }
+}
+
+function offsetSec(){ return computeOffsetSeconds() || 0; }
+
+function chartTimeToPlaybackSec({sec=null, beat=null}) {
+  const byBeats = ($("#timeMode").value === "Beats");
+  const S = spb(); // sec per beat
+  const present = v => v != null && isFinite(v);
+
+  // timeMode에 따라 “우선값”을 정하고, 없으면 다른 축을 환산
+  let baseSec;
+  if (byBeats) {
+    if (present(beat)) baseSec = beatsToSec(beat);
+    else if (present(sec)) baseSec = sec;
+    else baseSec = 0;
+  } else {
+    if (present(sec)) baseSec = sec;
+    else if (present(beat)) baseSec = beatsToSec(beat);
+    else baseSec = 0;
+  }
+  // ★ 오프셋 보정
+  return baseSec + offsetSec();
+}
 
 function setPlaybackRate(r){
   const rate = (r && isFinite(r)) ? r : 1;
@@ -1985,6 +2284,135 @@ const MS_GRID = 0.001;
 const qms = (t) => Math.round(t / MS_GRID) * MS_GRID;    // 최근접 1ms
 const qmsFloor = (t) => Math.floor(t / MS_GRID) * MS_GRID;
 /* ---------- Utils ---------- */
+/* ───────── Camera frame preview ───────── */
+
+// 기본 카메라 상태 (Unity Fixed16x9Camera 기준)
+const CAM_BASE = {
+  heightPx: 1080,            // orthographicSize = height/2
+  angleDegZ: 0,
+  centerPx: { x: 960, y: 540 }
+};
+
+// 카메라 노트의 시작/지속(초) 환산
+function getCameraStartSec(n){
+  return chartTimeToPlaybackSec({ sec: n.startTime, beat: n.startBeat });
+}
+function getCameraDurationSec(n){
+  const byBeats = ($("#timeMode").value === "Beats");
+  if (byBeats) return isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration || 0);
+  return isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0);
+}
+
+// nowSec 시점의 카메라 상태를 순차 시뮬로 계산 (이벤트 체이닝 반영)
+function computeCameraState(nowSec){
+  let h = CAM_BASE.heightPx;
+  let a = CAM_BASE.angleDegZ;
+  let c = { ...CAM_BASE.centerPx };
+
+  // 카메라 노트만 추출 후 시작시간 오름차순
+  const cams = (chart.notes || []).filter(n => n.type === "Camera")
+    .map(n => ({ n, t0: getCameraStartSec(n), dur: Math.max(0, getCameraDurationSec(n)) }))
+    .sort((x,y)=> x.t0 - y.t0);
+
+  // 이징(간단 버전)
+  const easeFn = (name) => {
+    name = (name || "").toLowerCase();
+    if (name.includes("inout")) {
+      return t => (t<0.5)? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+    }
+    return t => t; // Linear
+  };
+
+  for (const it of cams){
+    const n = it.n, t0 = it.t0, d = it.dur, t1 = t0 + d;
+    const eh = !!n.camAffectHeight, ea = !!n.camAffectAngle, ec = !!n.camAffectCenter;
+    const toH = isFinite(n.camHeightPx) && n.camHeightPx>0 ? n.camHeightPx : h;
+    const toA = isFinite(n.camAngleDegZ) ? n.camAngleDegZ : a;
+    const toC = (n.camCenterPx && isFinite(n.camCenterPx.x) && isFinite(n.camCenterPx.y)) ? n.camCenterPx : c;
+    const ease = easeFn(n.camEase);
+
+    if (nowSec < t0) break;             // 아직 시작 전 → 현 상태 반환
+    if (d <= 1e-6 || nowSec >= t1){     // 즉시/완료 상태 → 목표로 스냅
+      if (eh) h = toH;
+      if (ea) a = toA;
+      if (ec) c = { x: toC.x, y: toC.y };
+      continue;
+    }
+    // 진행 중이면 보간 후 바로 반환
+    const r = ease(clamp01((nowSec - t0) / d));
+    const H = eh ? (h + (toH - h) * r) : h;
+    const A = ea ? (a + (toA - a) * r) : a;
+    const C = ec ? { x: c.x + (toC.x - c.x) * r, y: c.y + (toC.y - c.y) * r } : c;
+    return { heightPx: H, angleDegZ: A, centerPx: C };
+  }
+
+  return { heightPx: h, angleDegZ: a, centerPx: c };
+}
+
+// 회전 사각형(절대 px) 테두리만 그리기
+function drawRotatedRectAbs(ctx, centerAbs, widthPx, heightPx, angleDeg, stroke="#ffd48a", lineW=2, dash=[6,4]){
+  const s = (getAR().w / REF_W);              // px → 캔버스 스케일
+  const cx = toCXabs(centerAbs).x;
+  const cy = toCXabs(centerAbs).y;
+  const w = widthPx * s, h = heightPx * s;
+  const r = (angleDeg || 0) * Math.PI/180;
+
+  // 사각형 4꼭짓점(로컬 → 회전 → 월드)
+  const pts = [
+    {x: -w/2, y: -h/2},
+    {x:  w/2, y: -h/2},
+    {x:  w/2, y:  h/2},
+    {x: -w/2, y:  h/2},
+  ].map(p => {
+    const xr = p.x * Math.cos(r) - p.y * Math.sin(r) + cx;
+    const yr = p.x * Math.sin(r) + p.y * Math.cos(r) + cy;
+    return {x:xr, y:yr};
+  });
+
+  ctx.save();
+  ctx.lineWidth = lineW;
+  ctx.strokeStyle = stroke;
+  if (dash) ctx.setLineDash(dash);
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 미니 배지(선택)
+function drawCamBadge(ctx, text, px, py){
+  ctx.save();
+  ctx.font = "12px system-ui, sans-serif";
+  const pad = 6;
+  const w = ctx.measureText(text).width + pad*2;
+  const h = 20;
+  ctx.fillStyle = "rgba(17,32,51,0.9)";
+  ctx.fillRect(px, py, w, h);
+  ctx.strokeStyle = "#264463";
+  ctx.strokeRect(px+0.5, py+0.5, w-1, h-1);
+  ctx.fillStyle = "#dfe7ff";
+  ctx.fillText(text, px+pad, py+h-6);
+  ctx.restore();
+}
+
+// 현재 시점 nowSec의 카메라 프레임을 그리기
+function drawCameraFrame(nowSec){
+  const show = document.querySelector("#showCamFrame")?.checked ?? true;
+  if (!show) return;
+
+  const st = computeCameraState(nowSec);
+  const height = Math.max(1, st.heightPx);
+  const width  = height * (16/9);        // Fixed16x9Camera 기준
+
+  // 테두리
+  drawRotatedRectAbs(ctx, st.centerPx, width, height, st.angleDegZ, "#ffd48a", 2, [8,5]);
+
+  // 미니 배지 (좌상단)
+  const label = `CAM ${Math.round(width)}×${Math.round(height)} @ (${Math.round(st.centerPx.x)},${Math.round(st.centerPx.y)})  rot ${Math.round(st.angleDegZ)}°`;
+  drawCamBadge(ctx, label, 10, 10);
+}
 
 let rafAcc = null, accTimer = null;
 
@@ -2132,8 +2560,6 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
-
-
 
 
 
