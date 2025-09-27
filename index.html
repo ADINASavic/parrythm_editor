@@ -27,6 +27,11 @@
   .cell{background:#0e1220;border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .cell.active{outline:2px solid var(--accent)}
   .canvasWrap{display:flex;gap:12px;flex-wrap:wrap}
+  /* 캔버스는 반드시 클릭을 받는다 */
+  #view { pointer-events: auto; display:block; }
+  /* 혹시 뷰 상단에 떠 있는 디버그 배지/오버레이가 있다면 */
+  #dbgBadge { pointer-events: none; }
+
   canvas{background:#0b0f1c;border:1px solid #233;border-radius:8px}
   table{width:100%;border-collapse:collapse;margin-top:8px}
   th,td{border-bottom:1px solid var(--line);padding:8px;font-size:13px}
@@ -524,46 +529,90 @@ function fromCXabs(mx,my){
   return { x: nx * REF_W, y: ny * REF_H };
 }
 
-view.addEventListener("click", (e)=>{
-  const rect=view.getBoundingClientRect(); const sx=view.width/rect.width, sy=view.height/rect.height;
-  const mx=(e.clientX-rect.left)*sx, my=(e.clientY-rect.top)*sy;
-  const p=fromCXabs(mx,my);
+// ... 기존 변수/함수 선언들 위·아래 상관없이 동일 스코프에 들어가면 됨
 
+// 안전: 캔버스가 꼭 클릭을 받도록
+view.style.pointerEvents = 'auto';
+view.tabIndex = 0;
 
-  const t = clamp(xToTime(x), 0, dur);
- applyTimeFromWave(t, null);          // 내부에서 seek 처리
- const tt = qms(t);                    // 1ms 스냅
- // ✅ 정지 상태에서도 즉시 눈으로 보이게 강제 업데이트
- curTimeEl.textContent = tt.toFixed(3);
- window.getPreviewNowSec = () => tt;
- redrawBeat();
- drawWave();
-  if(t==="CircleTap"){
-    circlePosAbs=p; $("#circlePos").value = `${Math.round(p.x)},${Math.round(p.y)}`;
+// 클릭/터치 모두 커버
+view.addEventListener("pointerdown", onViewPointerDown, {passive:true});
+
+function onViewPointerDown(e){
+  if (!view) return;
+  const rect = view.getBoundingClientRect();
+  // DPR 보정 (width/height는 devicePixel 크기)
+  const sx = (rect.width  > 0) ? (view.width  / rect.width)  : 1;
+  const sy = (rect.height > 0) ? (view.height / rect.height) : 1;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top)  * sy;
+
+  const ar = getAR();
+  // AR 영역 밖 클릭은 무시 (의도치 않은 가장자리 클릭 방지)
+  if (mx < ar.x || mx > ar.x + ar.w || my < ar.y || my > ar.y + ar.h) return;
+
+  const p = fromCXabs(mx, my);           // 절대 좌표(1920x1080)
+  const t = $("#noteType").value;
+
+  // 디버그 배지에 마지막 클릭 정보 표시 (유용)
+  setDbg(`click: ${t}\nabs=(${Math.round(p.x)},${Math.round(p.y)})`);
+
+  if (t === "CircleTap"){
+    circlePosAbs = p;
+    $("#circlePos").value = `${Math.round(p.x)},${Math.round(p.y)}`;
+    drawView();
+    return;
   }
-  else if(t==="Slider" && !pathFinished){
-    pathPtsAbs.push(p); $("#pathCount").textContent=String(pathPtsAbs.length);
+
+  if (t === "Slider"){
+    // pathFinished 상태면 추가 클릭이 막히므로, 편집 시작 시 자동 해제 옵션
+  if (pathFinished && (pathPtsAbs?.length ?? 0) >= 2){
+    // 기존 경로 비우고 새로 시작
+    pathPtsAbs = [];
+    pathFinished = false;
+  }
+    if (!pathPtsAbs) pathPtsAbs = [];
+    pathPtsAbs.push({x:p.x, y:p.y});
+    $("#pathCount").textContent = String(pathPtsAbs.length);
     renderPointList();
+    drawView();
+    return;
   }
-  else if(t==="Bullet"){
+
+  if (t === "Bullet"){
     const three = $("#bullet3Click").checked;
-    if(three){
-      if(bulletStage === 0){
-        bulletTemp.spawn = p; $("#bulletSpawn").value = `${Math.round(p.x)},${Math.round(p.y)}`; bulletStage = 1;
-      }else if(bulletStage === 1){
-        bulletTemp.dock = p; $("#bulletDock").value = `${Math.round(p.x)},${Math.round(p.y)}`; bulletStage = 2;
-      }else{
-        bulletTemp.despawn = p; $("#bulletDespawn").value = `${Math.round(p.x)},${Math.round(p.y)}`; bulletStage = 0;
-        if($("#bulletAutoAdd").checked){ addBullet(); bulletTemp = { spawn:null, dock:null, despawn:null }; }
+    if (three){
+      if (bulletStage === 0){
+        bulletTemp.spawn = p;
+        $("#bulletSpawn").value = `${Math.round(p.x)},${Math.round(p.y)}`;
+        bulletStage = 1;
+      } else if (bulletStage === 1){
+        bulletTemp.dock = p;
+        $("#bulletDock").value = `${Math.round(p.x)},${Math.round(p.y)}`;
+        bulletStage = 2;
+      } else {
+        bulletTemp.despawn = p;
+        $("#bulletDespawn").value = `${Math.round(p.x)},${Math.round(p.y)}`;
+        bulletStage = 0;
+        if ($("#bulletAutoAdd").checked){
+          addBullet();
+          bulletTemp = { spawn:null, dock:null, despawn:null };
+        }
       }
-      updateBulletStageLabel();
-    }else{
-      const target = $("#bulletClickTarget").value; const s = `${Math.round(p.x)},${Math.round(p.y)}`;
-      if(target==="spawn") $("#bulletSpawn").value=s; if(target==="dock") $("#bulletDock").value=s; if(target==="despawn") $("#bulletDespawn").value=s;
+    } else {
+      const target = $("#bulletClickTarget").value;
+      const s = `${Math.round(p.x)},${Math.round(p.y)}`;
+      if      (target === "spawn")   $("#bulletSpawn").value   = s;
+      else if (target === "dock")    $("#bulletDock").value    = s;
+      else if (target === "despawn") $("#bulletDespawn").value = s;
     }
+    updateBulletStageLabel();
+    drawView();
+    return;
   }
-  drawView();
-});
+}
+
+
 
 function drawView(){
   const w=view.width,h=view.height; ctx.clearRect(0,0,w,h);
