@@ -377,9 +377,11 @@
 
 <script>
 
+const STYLE_TYPE = "Line";
+
 const WAVE_ROW_H   = 18; // 서브레인 한 칸 높이
 const WAVE_ROW_GAP = 4;
-const WAVE_TYPES = ["Grid","CircleTap","Slider","Bullet","Camera"];
+const WAVE_TYPES = ["Grid","CircleTap","Slider","Bullet","Camera","Line"];
 let waveBlocks = [];     // [{x,y,w,h, idx, type, row, t0,t1}]
 
 const GRID_LEFT   = 648;
@@ -475,6 +477,19 @@ $("#noteType").addEventListener("change", e=>{
 });
 
 /* ---------- Grid UI ---------- */
+
+function addStyleEvent({ timeSec=null, timeBeat=null, target="grid-all", index=0, color="#FF4444FF", fadeSec=0 }) {
+  chart.notes.push({
+    type: STYLE_TYPE,
+    timeSec,           // Seconds 모드용
+    timeBeat,          // Beats 모드용
+    target,            // "grid-all" | "grid-line"
+    index,             // grid-line일 때 라인 인덱스
+    color,             // "#RRGGBB" or "#RRGGBBAA"
+    fadeSec            // 페이드 시간(초). Beats 모드면 환산해서 넣어도 됨
+  });
+}
+
 const gridEl = $("#grid");
 function buildGrid(){
   gridEl.innerHTML = "";
@@ -2107,14 +2122,14 @@ function applyTimeFromWave(t0, t1){
   const off = computeOffsetSeconds();    // chart offset (sec)
 
   const toBeatsUI = (secPlayback) => (S > 0 ? (secPlayback - off) / S : 0);
-  const snap1ms   = (t) => snapTime(t)     // 1ms 양자화
+  const snap1ms   = (t) => snapTime(t);       // 1ms 양자화
 
   // ✅ 인자 이름과 본문 변수 통일 (secPlayback 사용)
   function fillSingleTime(secPlayback){
     const typ = $("#noteType").value;
     const secMusical = secPlayback - off;                // UI의 "sec"은 음악적 시각으로 표기
     const secStr     = qms(secMusical).toFixed(3);
-    const beatStr    = (S>0 ? qms(toBeatsUI(secPlayback)).toFixed(3) : "0.000");
+    const beatStr    = (S>0 ? snappedBeatsFromSec(secPlayback).toFixed(3) : "0.000");
 
     if (typ === "Grid") {
       $("#judgeTimeSec").value = secStr;
@@ -2145,8 +2160,8 @@ function applyTimeFromWave(t0, t1){
       $("#sliderStartSec").value = aMus.toFixed(3);
       $("#sliderDurSec").value   = dS.toFixed(3);
       if (S>0){
-        $("#sliderStartBeat").value = qms(toBeatsUI(aS)).toFixed(3);
-        $("#sliderDurBeats").value  = qms(dS / S).toFixed(3);
+        $("#sliderStartBeat").value = snappedBeatsFromSec(aS).toFixed(3);
+        $("#sliderDurBeats").value  = (snappedBeatsFromSec(bS) - snappedBeatsFromSec(aS)).toFixed(3);
       }
     } else if (typ === "Camera") {
       $("#camStartSec").value = aMus.toFixed(3);
@@ -2163,25 +2178,56 @@ function applyTimeFromWave(t0, t1){
   }
 
   if (t1 == null) {
-    const t = snap1ms(t0);
-    fillSingleTime(t);
-    if (typeof seekAccurate === "function") seekAccurate(t);
-    else audioEl.currentTime = t;
-  } else {
-    const startSec = fillRange(t0, t1);
-    if (typeof seekAccurate === "function") seekAccurate(startSec);
-    else audioEl.currentTime = startSec;
+    const snapped = $("#snap").checked ? snapTime(t0) : qms(t0); // ★
+    fillSingleTime(snapped);
+    if (typeof seekAccurate === "function") seekAccurate(snapped);
+    else audioEl.currentTime = snapped;
+  }  else {
+  // 구간 스냅: 시작/끝 각각 스냅 → 시작으로 시킹
+  const a = $("#snap").checked ? snapTime(Math.min(t0, t1)) : qms(Math.min(t0, t1));
+  const b = $("#snap").checked ? snapTime(Math.max(t0, t1)) : qms(Math.max(t0, t1));
+  const startSec = fillRange(a, b);
+  if (typeof seekAccurate === "function") seekAccurate(startSec);
+  else audioEl.currentTime = startSec;
   }
+
 
   redrawBeat();
   drawWave();
 }
 function snapTime(t){
-  if(!$("#snap").checked) return t; const bpm=num($("#bpm").value); if(bpm<=0) return t;
-  const subdiv=parseInt($("#subdiv").value||"8"); const spb=60/bpm; const off=computeOffsetSeconds();
-  const rel=(t-off)/spb; const snapped=Math.round(rel*subdiv)/subdiv; return off+snapped*spb;
+  if (!$("#snap").checked) return t;
+
+  const bpm = num($("#bpm").value);
+  if (bpm <= 0) return t;
+
+  const subdiv = parseInt($("#subdiv").value || "8");
+  const spb    = 60 / bpm;                 // seconds per beat
+  const off    = computeOffsetSeconds();
+
+  // 현재 시간을 오프셋 기준 비트 좌표로 옮김
+  const relBeats = (t - off) / spb;
+
+  // ★정수 격자(k/subdiv)에 스냅 (부동소수 출력 없음)
+  const k = Math.round(relBeats * subdiv); // integer grid index
+  const snappedSec = off + (k * spb) / subdiv;
+
+  return snappedSec; // 절대초(플레이백 좌표)
 }
 function redrawBeat(){ const t=audioEl.currentTime||0; const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-"; drawWave(); }
+
+function snappedBeatsFromSec(secPlayback){
+  const bpm = num($("#bpm").value);
+  const spb = (bpm > 0) ? 60 / bpm : 0;
+  const off = computeOffsetSeconds();
+  const subdiv = parseInt($("#subdiv").value || "8");
+  if (spb <= 0 || subdiv <= 0) return 0;
+
+  // sec → 비트 좌표 → k 정수 → k/subdiv 로 복원
+  const rel = (secPlayback - off) / spb;
+  const k   = Math.round(rel * subdiv);
+  return k / subdiv; // 정확한 비트(분수)
+}
 
 const rateSelect = $("#playbackRate");
 
