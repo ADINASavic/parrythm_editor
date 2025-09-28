@@ -67,6 +67,7 @@
         <option value="Slider">Slider</option>
         <option value="Bullet">Bullet</option>
         <option value="Camera">Camera</option>
+        <option value="Line">Line</option>
       </select>
     </div>
 
@@ -197,6 +198,50 @@
   </div>
 
   <button id="btnAddCamera" class="primary" onclick="addCamera()">Add Camera</button>
+</div>
+
+<div id="styleInputs" style="display:none">
+  <div class="hint">Grid 색상 이벤트. Beat/Seconds 중 사용 중인 모드로 채우세요.</div>
+
+  <div class="row">
+    <label>Target</label>
+    <select id="stTarget">
+      <option value="grid-all">grid-all</option>
+      <option value="grid-line">grid-line</option>
+    </select>
+
+    <label>Index</label>
+    <input id="stIndex" type="number" min="0" step="1" value="0" style="width:80px">
+  </div>
+
+  <div class="row">
+    <label>Time (sec)</label>
+    <input id="stTimeSec" type="number" step="0.001" value="0.000" style="width:120px">
+
+    <label>Time (beats)</label>
+    <input id="stTimeBeat" type="number" step="0.001" value="0.000" style="width:120px">
+  </div>
+
+<div class="row">
+  <label>Fade (beats)</label>
+  <input id="stFadeBeats" type="number" min="0" step="0.01" value="0.000" style="width:100px">
+
+  <label>Fade (sec)</label>
+  <input id="stFadeSec" type="number" min="0" step="0.05" value="0.25" style="width:100px">
+</div>
+
+
+  <div class="row">
+
+    <label>Color</label>
+    <input id="stColorText" type="text" value="#ff4444ff" style="width:140px" spellcheck="false">
+    <input id="stColorPick" type="color" value="#ff4444" title="RGB picker">
+    <label class="mini" style="width:auto">Alpha</label>
+    <input id="stAlpha" type="range" min="0" max="255" step="1" value="255" style="width:120px">
+    <span id="stAlphaVal" class="muted" style="width:auto">255</span>
+  </div>
+
+  <button id="stAddBtn" class="primary">Add Style</button>
 </div>
 
 
@@ -398,6 +443,15 @@ const $ = s => document.querySelector(s);
 const REF_W = 1920;
 const REF_H = 1080;
 
+let styleRuntime = {
+  currentColor: rgba(255,255,255,255),
+  targetColor: rgba(255,255,255,255),
+  fadeStart: 0,
+  fadeDur: 0,
+  active: false
+};
+
+let gridColor = "rgba(255,255,255,1)";
 /* ---------- 상태 ---------- */
 
 window.onerror = (msg, src, line, col, err) => {
@@ -415,6 +469,167 @@ window.onunhandledrejection = (e) => {
 let DBG = true; // 필요시 false
 function dlog(tag, obj){ if(!DBG) return; console.log(`[DBG] ${tag}`, obj||""); }
 
+// ─────────────────────────────────────────────────────────────
+// [Style] 이벤트 추가(폼 입력 → 차트에 push)
+// 요구 id: stTarget, stIndex, stTimeSec, stTimeBeat, stFadeSec, stColorText, stAddBtn
+// ─────────────────────────────────────────────────────────────
+
+// 가벼운 보조: Hex를 항상 #rrggbbaa 로 정규화
+function normalizeHex8(s){
+  if (!s) return '#ffffffff';
+  s = s.trim(); if (s[0] !== '#') s = '#'+s;
+  if (s.length === 4){ // #rgb
+    const r=s[1], g=s[2], b=s[3];
+    return `#${r}${r}${g}${g}${b}${b}ff`.toLowerCase();
+  }
+  if (s.length === 5){ // #rgba
+    const r=s[1], g=s[2], b=s[3], a=s[4];
+    return `#${r}${r}${g}${g}${b}${b}${a}${a}`.toLowerCase();
+  }
+  if (s.length === 7)  return (s+'ff').toLowerCase(); // #rrggbb -> #rrggbbaa
+  if (s.length === 9)  return s.toLowerCase();        // #rrggbbaa
+  return '#ffffffff';
+}
+
+// ---- Color RGBA sync (color input + alpha slider + hex8 text) ----
+function toHex2(v){ v = Math.max(0, Math.min(255, v|0)); return v.toString(16).padStart(2,'0'); }
+
+function syncFromText(){
+  const $t = document.getElementById('stColorText');
+  const $p = document.getElementById('stColorPick');
+  const $a = document.getElementById('stAlpha');
+  const $av = document.getElementById('stAlphaVal');
+  if (!$t || !$p || !$a) return;
+
+  const n = normalizeHex8($t.value);
+  $t.value = n;                           // 보정된 #rrggbbaa
+  $p.value = '#' + n.slice(1,7);          // RGB만
+  const a = parseInt(n.slice(7,9), 16);   // 0..255
+  $a.value = a;
+  if ($av) $av.textContent = String(a);
+}
+
+function syncFromPicker(){
+  const $t = document.getElementById('stColorText');
+  const $p = document.getElementById('stColorPick');
+  const $a = document.getElementById('stAlpha');
+  const $av = document.getElementById('stAlphaVal');
+  if (!$t || !$p || !$a) return;
+
+  const rgb = ($p.value || '#000000').toLowerCase(); // #rrggbb
+  const a = Math.max(0, Math.min(255, parseInt($a.value||'255',10)||0));
+  $t.value = (rgb + toHex2(a)).toLowerCase();
+  if ($av) $av.textContent = String(a);
+}
+
+function syncFromAlpha(){
+  const $t = document.getElementById('stColorText');
+  const $p = document.getElementById('stColorPick');
+  const $a = document.getElementById('stAlpha');
+  const $av = document.getElementById('stAlphaVal');
+  if (!$t || !$p || !$a) return;
+
+  const rgb = ($p.value || '#000000').toLowerCase();
+  const a = Math.max(0, Math.min(255, parseInt($a.value||'255',10)||0));
+  $t.value = (rgb + toHex2(a)).toLowerCase();
+  if ($av) $av.textContent = String(a);
+}
+
+// 이벤트 바인딩 (DOM 준비 후 한 번만)
+(function initColorSync(){
+  const t = document.getElementById('stColorText');
+  const p = document.getElementById('stColorPick');
+  const a = document.getElementById('stAlpha');
+  if (!t || !p || !a) return; // 아직 없으면 패스
+
+  // 입력 이벤트
+  p.addEventListener('input',  syncFromPicker);
+  a.addEventListener('input',  syncFromAlpha);
+  t.addEventListener('change', syncFromText);
+  t.addEventListener('blur',   syncFromText);
+  // 초기 동기화
+  syncFromText();
+})();
+
+
+function addStyleEventFromUI(){
+  const target = (document.getElementById('stTarget')?.value) || 'grid-all';
+  const index  = parseInt(document.getElementById('stIndex')?.value ?? '0', 10) || 0;
+  const fadeBeatsEl = document.getElementById('stFadeBeats');
+  // 시간: 사용자가 쓴 값을 "그대로" 저장 (빈칸은 null)
+  const timeSecStr  = document.getElementById('stTimeSec')?.value;
+  const timeBeatStr = document.getElementById('stTimeBeat')?.value;
+  const timeSec  = (timeSecStr  !== '' && timeSecStr  != null) ? Number(timeSecStr)  : null;
+  const timeBeat = (timeBeatStr !== '' && timeBeatStr != null) ? Number(timeBeatStr) : null;
+
+  // 페이드: 둘 다 "그대로" 저장 (빈칸은 0으로)
+  const fadeSecStr  = document.getElementById('stFadeSec')?.value;
+  const fadeBeatStr = document.getElementById('stFadeBeats')?.value;
+  const fadeBeat = Number(fadeBeatsEl?.value ?? 0);
+  const fadeSec  = Number(document.getElementById('stFadeSec').value ?? 0);
+
+  // 색상은 텍스트 박스 그대로
+  const color = (document.getElementById('stColorText')?.value || '#ffffffff').trim().toLowerCase();
+
+  addStyleEvent({
+    timeSec, timeBeat,
+    target, index,
+    color,
+    // ⬇️ 단 하나도 변환하지 말고 둘 다 저장
+    fadeSec,
+    fadeBeat
+  });
+
+  if (typeof buildStyleSchedule === 'function') buildStyleSchedule();
+  if (typeof drawWave === 'function') drawWave();
+  if (typeof renderNotes === 'function') renderNotes(); // 리스트 즉시 갱신
+}
+
+
+function getLineTriggerSec(n){
+  const S = spb(); // sec per beat
+  const byBeats = (chart.timeMode === "Beats");
+  // UI에서 채운 축을 우선 사용 (없으면 다른 축 환산)
+  let baseSec = null;
+  if (!byBeats) {
+    baseSec = Number.isFinite(n.timeSec) ? n.timeSec
+              : (Number.isFinite(n.timeBeat) ? (n.timeBeat * (S||1)) : 0);
+  } else {
+    baseSec = Number.isFinite(n.timeBeat) ? (n.timeBeat * (S||1))
+              : (Number.isFinite(n.timeSec) ? n.timeSec : 0);
+  }
+  return (baseSec || 0) + computeOffsetSeconds(); // ← 오프셋을 항상 초로 더함
+}
+
+// 버튼 클릭으로 추가
+const _stAddBtn = document.getElementById('stAddBtn');
+if (_stAddBtn) {
+  _stAddBtn.addEventListener('click', (e)=>{ e.preventDefault(); addStyleEventFromUI(); });
+}
+
+function getStyleStartSec(n){
+  // Line: timeMode에 따라 timeSec/timeBeat를 환산 + offset 적용
+  return chartTimeToPlaybackSec({ sec: n.timeSec, beat: n.timeBeat });
+}
+
+// Enter 및 Ctrl+Enter로도 추가(키보드만으로 가능)
+window.addEventListener('keydown', (e)=>{
+  // 폼 내부에서 Enter → 추가
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+    const a = document.activeElement;
+    if (a && a.closest && a.closest('#stylePanel')) {
+      e.preventDefault();
+      addStyleEventFromUI();
+    }
+  }
+  // 어디서든 Ctrl/Cmd+Enter → 추가
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    addStyleEventFromUI();
+  }
+});
+
+
 // 화면 우상단에 디버그 배지
 (function(){
   const div = document.createElement("div");
@@ -426,6 +641,131 @@ function dlog(tag, obj){ if(!DBG) return; console.log(`[DBG] ${tag}`, obj||""); 
 function setDbg(text){
   const el = document.getElementById("dbgBadge");
   if (el) el.textContent = text;
+}
+
+function parseHexColor(hex) {
+  // "#RRGGBB" or "#RRGGBBAA"
+  if (!hex || hex[0] !== "#") return rgba(255,255,255,255);
+  const v = hex.replace("#","");
+  const r = parseInt(v.slice(0,2),16);
+  const g = parseInt(v.slice(2,4),16);
+  const b = parseInt(v.slice(4,6),16);
+  const a = v.length >= 8 ? parseInt(v.slice(6,8),16) : 255;
+  return rgba(r,g,b,a);
+}
+
+function rgba(r,g,b,a255){ return {r,g,b,a:a255}; }
+function rgbaLerp(a,b,t){
+  return rgba(
+    Math.round(a.r + (b.r - a.r)*t),
+    Math.round(a.g + (b.g - a.g)*t),
+    Math.round(a.b + (b.b - a.b)*t),
+    Math.round(a.a + (b.a - a.a)*t)
+  );
+}
+
+function rgbaToCSS(c){ return `rgba(${c.r},${c.g},${c.b},${(c.a/255).toFixed(3)})`; }
+
+let styleEvents = []; // {tSec, color, fadeSec, target, index, _ref}
+function buildStyleSchedule(){
+  styleEvents = [];
+  const off = computeOffsetSeconds() || 0;
+
+  for (const n of chart.notes || []) {
+    if (n.type !== STYLE_TYPE) continue;
+
+    // ▶ timeBeat가 있으면 beats→sec 후 오프셋 더하고,
+    //    없으면 timeSec에 오프셋을 더한다.
+    const tSec = (isFinite(n.timeBeat))
+      ? (beatsToSec(n.timeBeat) + off)
+      : ((n.timeSec ?? 0) + off);
+
+    const fadeSec = (n.fadeBeat != null && isFinite(n.fadeBeat))
+      ? beatsToSec(n.fadeBeat)
+      : (n.fadeSec || 0);
+
+    styleEvents.push({
+      tSec,
+      fadeSec: Math.max(0, fadeSec),
+      color: n.color || "#FFFFFF",
+      target: n.target || "grid-all",
+      index: n.index|0,
+      _ref: n
+    });
+  }
+  styleEvents.sort((a,b)=>a.tSec-b.tSec);
+}
+
+let nextStyleIdx = 0;        // 이미 있으면 유지
+let _lastStyleNow = -1;
+function evalStyleColorAt(t){
+  let c = _styleBaseColor;
+  for (const ev of styleEvents){
+    if (ev.tSec > t) break;
+    const to   = parseHexColor(ev.color);
+    const dur  = Math.max(0, ev.fadeSec || 0);
+    const t0   = ev.tSec;
+    const t1   = t0 + dur;
+
+    if (dur <= 1e-9 || t >= t1){
+      // 페이드 완료(또는 즉시 변경): 목표색으로 스냅
+      c = to;
+    } else if (t >= t0){
+      // 페이드 중: c → to 선형 보간
+      const u = (t - t0) / dur;
+      c = rgbaLerp(c, to, clamp01(u));
+    }
+  }
+  return c;
+}
+
+const HEX = "0123456789abcdef";
+const to2hex = (n) => {
+  n = Math.max(0, Math.min(255, n|0));
+  return HEX[(n>>4)&15] + HEX[n&15];
+};
+function readAlpha(hexOrEmpty){
+  const s = (hexOrEmpty||"").trim().toLowerCase();
+  if (s.startsWith("#") && s.length === 9) {
+    return parseInt(s.slice(7,9), 16); // #rrggbbaa
+  }
+  return null; // 없으면 null
+}
+
+// ── UI elements
+const _txt = document.getElementById("stColorText");
+const _pick = document.getElementById("stColorPick");
+
+// 픽커 → 텍스트 (알파 유지)
+if (_pick && _txt){
+  _pick.addEventListener("input", () => {
+    const alpha = readAlpha(_txt.value);
+    const a = (alpha == null) ? 255 : alpha;   // 알파 없으면 255로
+    const hex6 = (_pick.value || "#ffffff").toLowerCase(); // #rrggbb
+    _txt.value = (hex6 + to2hex(a));           // #rrggbbaa로 강제
+  });
+
+  // 텍스트 → 픽커 (첫 7자리만 적용, 알파는 텍스트에만)
+  _txt.addEventListener("input", () => {
+    const norm = normalizeHex8(_txt.value);    // 이미 있는 함수
+    _txt.value = norm;                          // #rrggbbaa로 정규화
+    // color input은 #rrggbb만 받음
+    try { _pick.value = norm.slice(0,7); } catch {}
+  });
+}
+
+// 현재 gridColor를 RGBA 객체로 환산
+function currentGridRGBA(){
+  // gridColor가 rgba(...) 문자열일 때 파싱 (간단 파서)
+  const m = /rgba\((\d+),(\d+),(\d+),([0-1]?\.?\d*)\)/.exec(gridColor);
+  if (m) return rgba(+m[1],+m[2],+m[3], Math.round((+m[4])*255));
+  // 기본값
+  return rgba(255,255,255,255);
+}
+
+// 실제 그리드 색 반영
+function setGridColor(cRGBA){
+  gridColor = rgbaToCSS(cRGBA);
 }
 
 function snapshotState(extra={}){
@@ -442,7 +782,26 @@ function snapshotState(extra={}){
   };
 }
 
+function evalStyleColorAt(t){
+  let c = _styleBaseColor;
+  for (const ev of styleEvents){
+    if (ev.tSec > t) break;
+    const to   = parseHexColor(ev.color);
+    const dur  = Math.max(0, ev.fadeSec || 0);
+    const t0   = ev.tSec;
+    const t1   = t0 + dur;
 
+    if (dur <= 1e-9 || t >= t1){
+      // 페이드 완료(또는 즉시 변경): 목표색으로 스냅
+      c = to;
+    } else if (t >= t0){
+      // 페이드 중: c → to 선형 보간
+      const u = (t - t0) / dur;
+      c = rgbaLerp(c, to, clamp01(u));
+    }
+  }
+  return c;
+}
 
 let chart = {
   schemaVersion: 2,
@@ -473,22 +832,26 @@ $("#noteType").addEventListener("change", e=>{
   $("#sliderInputs").style.display = (t==="Slider") ? "block":"none";
   $("#bulletInputs").style.display = (t==="Bullet") ? "block":"none";
   $("#cameraInputs").style.display = (t==="Camera") ? "block":"none";
+  $("#styleInputs").style.display  = (t === "Line")       ? "block" : "none";
   refreshAddButtons();
 });
 
 /* ---------- Grid UI ---------- */
-
-function addStyleEvent({ timeSec=null, timeBeat=null, target="grid-all", index=0, color="#FF4444FF", fadeSec=0 }) {
-  chart.notes.push({
-    type: STYLE_TYPE,
-    timeSec,           // Seconds 모드용
-    timeBeat,          // Beats 모드용
-    target,            // "grid-all" | "grid-line"
-    index,             // grid-line일 때 라인 인덱스
-    color,             // "#RRGGBB" or "#RRGGBBAA"
-    fadeSec            // 페이드 시간(초). Beats 모드면 환산해서 넣어도 됨
+function addStyleEvent({ type="Line", timeSec=null, timeBeat=null, target="grid-all", index=0, color="#ffffffff", fadeSec=0, fadeBeat=0 }){
+  (chart.notes || (chart.notes=[])).push({
+    type: "Line",
+    timeSec,
+    timeBeat,
+    target,
+    index,
+    color,
+    fadeSec,
+    fadeBeat   // ← 카멜케이스 정확히
   });
+  renderNotes?.();  // 리스트 갱신
+  drawWave?.();     // 파형 막대 갱신
 }
+
 
 const gridEl = $("#grid");
 function buildGrid(){
@@ -887,10 +1250,8 @@ function nowSecQms(){
 }
 
 
-function getCameraDurSec(n){
-  const byBeats = $("#timeMode").value === "Beats";
-  if (byBeats) return (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration||0));
-  return (isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0));
+function getCameraDurSec(n){  // ← 호환용 별칭
+  return getCameraDurationSec(n);
 }
 
 
@@ -919,64 +1280,152 @@ function noteTimeWindowSec(n){
   const minSec = (minPx / (waveCanvas.clientWidth||1)) * span;
   return {t0: t, t1: t + minSec};
 }
- function drawNoteBlocks(){
-   waveBlocks = [];
-   const lanesTop = 6;
-   const allByType = Object.fromEntries(WAVE_TYPES.map(t=>[t,[]]));
-   // 1) 수집 (보이는 구간만)
-   chart.notes.forEach((n, idx)=>{
-     const {t0,t1} = noteTimeWindowSec(n);
-     const a = Math.max(t0, viewStart), b = Math.min(t1, viewEnd);
-     if(b <= a) return;
-     const x0 = timeToX(a), x1=timeToX(b);
-     allByType[n.type||"Grid"].push({ x0, x1, idx, type:n.type||"Grid", t0:a, t1:b });
-   });
+function drawNoteBlocks(){
+  // ─────────────────────────────────────────────────────────────
+  // 설정
+  // ─────────────────────────────────────────────────────────────
+  const lanesTop = 6;
+  const STYLE_TYPE = "Line";     // 스타일/색 이벤트 타입명
+  const LINE_PIXEL_W = 8;        // 스타일 이벤트 표시 최소 폭(px)
+
+  waveBlocks = [];
+
+  // 타입 바스켓 준비
+  const allByType = Object.fromEntries(WAVE_TYPES.map(t=>[t,[]]));
+
+  // ─────────────────────────────────────────────────────────────
+  // 1) 수집 (보이는 구간만)
+  //    - Line 은 점 이벤트로 처리: view 범위 내면 고정 폭으로 중앙x를 잡아 push
+  //    - 그외는 noteTimeWindowSec에서 받은 [t0,t1] 클리핑
+  // ─────────────────────────────────────────────────────────────
+  chart.notes.forEach((n, idx)=>{
+    const t = (n.type || "Grid");
+
+    if (t === STYLE_TYPE){
+      // Line/Style 이벤트의 트리거 시간(sec) 계산
+      // - 사용 중인 스키마에 맞춰 우선순위로 가져옴
+      const tLineSec = getLineTriggerSec(n);
+
+      // 보이는 구간 판정
+      if (tLineSec < viewStart || tLineSec > viewEnd) return;
+
+      const xc = timeToX(tLineSec);
+      const x0 = xc - LINE_PIXEL_W/2;
+      const x1 = xc + LINE_PIXEL_W/2;
+
+      // 색상(있으면 사용) 저장해두면 4)에서 활용
+      const color = n.color || "#ffffff";
+
+      allByType[t].push({
+        x0, x1, idx, type: t,
+        t0: tLineSec, t1: tLineSec,
+        isPoint: true,
+        color
+      });
+      return;
+    }
+
+    // 일반 노트(구간형)
+    const { t0, t1 } = noteTimeWindowSec(n);
+    const a = Math.max(t0, viewStart), b = Math.min(t1, viewEnd);
+    if (b <= a) return;
+
+    const x0 = timeToX(a), x1 = timeToX(b);
+    allByType[t].push({ x0, x1, idx, type: t, t0: a, t1: b });
+  });
+
+  // ─────────────────────────────────────────────────────────────
   // 2) 타입별 패킹 (행수 계산)
+  // ─────────────────────────────────────────────────────────────
   const packedByType = {};
-   const rowsByType   = {};
-  for(const t of WAVE_TYPES){
-     const { placed, rowCount } = packIntoRows(allByType[t]);
-     packedByType[t] = placed;
-     rowsByType[t]   = rowCount;
-   }
-   // 3) 타입별 베이스 Y (최대 행 고려해서 밴드 높이 확보)
-   let yCursor = lanesTop;
-   const baseYByType = {};
-   for(const t of WAVE_TYPES){
-     baseYByType[t] = yCursor;
-     const rows = Math.max(1, rowsByType[t]||0);
-     yCursor += rows * (WAVE_ROW_H + WAVE_ROW_GAP) + 6; // 타입 간 추가 간격
-   }
-   // 4) 그리기 & waveBlocks 적재
-   for(const t of WAVE_TYPES){
-     const items = packedByType[t] || [];
-     for(const it of items){
-       const rowY = baseYByType[t] + it.row * (WAVE_ROW_H + WAVE_ROW_GAP);
-       const w    = Math.max(2, it.x1 - it.x0);
-       // 색상
-       let fill="rgba(102,217,239,0.18)", stroke="#66d9ef";
-       if(t==="Grid"){ fill="rgba(110,231,183,0.20)"; stroke="#6ee7b7"; }
-       if(t==="CircleTap"){ fill="rgba(66,180,255,0.20)"; stroke="#44aaff"; }
-       if(t==="Slider"){ fill="rgba(102,217,239,0.22)"; stroke="#66d9ef"; }
-       if(t==="Bullet"){ fill="rgba(251,191,36,0.24)"; stroke="#fbbf24"; }
-       if(t==="Camera"){ fill="rgba(147,197,253,0.20)"; stroke="#93c5fd"; }
-       // 박스
-       wctx.save();
-       wctx.fillStyle = fill;
-       wctx.strokeStyle = stroke;
-       wctx.lineWidth = 1;
-       wctx.fillRect(it.x0, rowY, w, WAVE_ROW_H);
-       wctx.strokeRect(it.x0+0.5, rowY+0.5, w-1, WAVE_ROW_H-1);
-       // 라벨
-       const label = `#${it.idx+1} ${t}`;
-       wctx.fillStyle = "#dfe7ff";
-       wctx.font = "12px system-ui, sans-serif";
-       wctx.fillText(label, it.x0+4, rowY + WAVE_ROW_H - 5);
-       wctx.restore();
-       waveBlocks.push({ x:it.x0, y:rowY, w, h:WAVE_ROW_H, idx:it.idx, type:t, row:it.row, t0:it.t0, t1:it.t1 });
-     }
-   }
- }
+  const rowsByType   = {};
+  for (const t of WAVE_TYPES){
+    const { placed, rowCount } = packIntoRows(allByType[t]);
+    packedByType[t] = placed;
+    rowsByType[t]   = rowCount;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 3) 타입별 베이스 Y (최대 행 고려해서 밴드 높이 확보)
+  // ─────────────────────────────────────────────────────────────
+  let yCursor = lanesTop;
+  const baseYByType = {};
+  for (const t of WAVE_TYPES){
+    baseYByType[t] = yCursor;
+    const rows = Math.max(1, rowsByType[t] || 0);
+    yCursor += rows * (WAVE_ROW_H + WAVE_ROW_GAP) + 6; // 타입 간 추가 간격
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 4) 그리기 & waveBlocks 적재
+  //    - Line 은 점 이벤트용 색상/스타일을 별도 처리
+  // ─────────────────────────────────────────────────────────────
+  for (const t of WAVE_TYPES){
+    const items = packedByType[t] || [];
+    for (const it of items){
+      const rowY = baseYByType[t] + it.row * (WAVE_ROW_H + WAVE_ROW_GAP);
+      const w    = Math.max(2, it.x1 - it.x0);
+
+      // 기본 색상 팔레트
+      let fill="rgba(102,217,239,0.18)", stroke="#66d9ef";
+      if (t==="Grid"){       fill="rgba(110,231,183,0.20)"; stroke="#6ee7b7"; }
+      if (t==="CircleTap"){  fill="rgba(66,180,255,0.20)";  stroke="#44aaff"; }
+      if (t==="Slider"){     fill="rgba(102,217,239,0.22)"; stroke="#66d9ef"; }
+      if (t==="Bullet"){     fill="rgba(251,191,36,0.24)";  stroke="#fbbf24"; }
+      if (t==="Camera"){     fill="rgba(147,197,253,0.20)"; stroke="#93c5fd"; }
+
+      // Line/Style: 데이터가 준 색을 우선
+      if (t===STYLE_TYPE){
+        // it.color: "#RRGGBB(AA)" 지원, 없으면 기존 팔레트
+        if (it.color){
+          // stroke는 진하게, fill은 옅게
+          stroke = it.color;
+          // fill 투명도 낮추기
+          // (#RRGGBB or #RRGGBBAA → rgba 변환 유틸이 있으면 써도 됨)
+          fill = stroke; // 간단: 같은 색 + 아래 globalAlpha로 조절
+        }
+      }
+
+      // 박스 그리기
+      wctx.save();
+      if (t===STYLE_TYPE){
+        // 점 이벤트: 강조 테두리 + 옅은 채움
+        wctx.globalAlpha = 0.20;
+        wctx.fillStyle = fill;
+        wctx.fillRect(it.x0, rowY, w, WAVE_ROW_H);
+        wctx.globalAlpha = 1.0;
+        wctx.strokeStyle = stroke;
+        wctx.lineWidth = 2;
+        wctx.strokeRect(it.x0+0.5, rowY+0.5, w-1, WAVE_ROW_H-1);
+      } else {
+        wctx.fillStyle = fill;
+        wctx.strokeStyle = stroke;
+        wctx.lineWidth = 1;
+        wctx.fillRect(it.x0, rowY, w, WAVE_ROW_H);
+        wctx.strokeRect(it.x0+0.5, rowY+0.5, w-1, WAVE_ROW_H-1);
+      }
+
+      // 라벨
+      const label = (t===STYLE_TYPE)
+        ? `#${it.idx+1} ${t}${it.color ? ` ${it.color}` : ""}`
+        : `#${it.idx+1} ${t}`;
+      wctx.fillStyle = "#dfe7ff";
+      wctx.font = "12px system-ui, sans-serif";
+      wctx.fillText(label, it.x0+4, rowY + WAVE_ROW_H - 5);
+
+      wctx.restore();
+
+      waveBlocks.push({
+        x: it.x0, y: rowY, w, h: WAVE_ROW_H,
+        idx: it.idx, type: t, row: it.row,
+        t0: it.t0, t1: it.t1,
+        isPoint: !!it.isPoint,
+        color: it.color
+      });
+    }
+  }
+}
+
 
 function beatsToSec(b){ return b * spb(); }
 
@@ -993,21 +1442,33 @@ function strokeRectAbs(ctx, x0, y0, x1, y1, stroke="#2d3653", lineW=1){
 }
 
 function drawGridOverlay(){
-  // 외곽 테두리
-  strokeRectAbs(ctx, GRID_LEFT, GRID_TOP, GRID_RIGHT, GRID_BOTTOM, "#3a4a6a", 2);
+  // 런타임 그리드 색 (applyStyleEvents가 갱신)
+  const strokeMain = (typeof gridColor === "string" && gridColor.length) ? gridColor : "rgba(255,255,255,1)";
 
-  // 셀 경계선 (수직 2개, 수평 2개)
+  // ── 1) 외곽 테두리: 약한 글로우 + 메인 스트로크 두 겹
+  // 글로우
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  strokeRectAbs(ctx, GRID_LEFT, GRID_TOP, GRID_RIGHT, GRID_BOTTOM, strokeMain, 4);
+  ctx.restore();
+  // 메인
+  strokeRectAbs(ctx, GRID_LEFT, GRID_TOP, GRID_RIGHT, GRID_BOTTOM, strokeMain, 2);
+
+  // ── 2) 셀 경계선 (수직 2, 수평 2) : 메인색보다 살짝 옅게
+  ctx.save();
+  ctx.globalAlpha = 0.75;
   for(let i=1;i<3;i++){
     const x = GRID_LEFT + GRID_CELL * i;
-    drawLineAbs(ctx, {x, y:GRID_TOP}, {x, y:GRID_BOTTOM}, "#273a59", 1);
+    drawLineAbs(ctx, {x, y:GRID_TOP}, {x, y:GRID_BOTTOM}, strokeMain, 1);
     const y = GRID_TOP + GRID_CELL * i;
-    drawLineAbs(ctx, {x:GRID_LEFT, y}, {x:GRID_RIGHT, y}, "#273a59", 1);
+    drawLineAbs(ctx, {x:GRID_LEFT, y}, {x:GRID_RIGHT, y}, strokeMain, 1);
   }
+  ctx.restore();
 
-  // 셀 라벨 (c,r) — (0,0)=왼아래 ~ (2,2)=오른위
+  // ── 3) 셀 라벨 (c,r) — (0,0)=왼아래 ~ (2,2)=오른위
   ctx.save();
   ctx.font = "12px system-ui, sans-serif";
-  ctx.fillStyle = "#9fb3d9";
+  ctx.fillStyle = "#9fb3d9";         // 고정 톤(가독성 유지)
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   for(let r=0;r<3;r++){
@@ -1175,7 +1636,16 @@ function addCamera(){
   });
 }
 
-function pushNote(obj){ ensureCreatedAt(); obj._id = rid(); obj._createdAt = Date.now(); chart.notes.push(obj); renderNotes(); }
+function pushNote(obj){
+  ensureCreatedAt(); obj._id = rid(); obj._createdAt = Date.now();
+  chart.notes.push(obj); renderNotes();
+
+  // ★ Line(스타일) 노트일 때 스케줄 갱신
+  if (obj.type === STYLE_TYPE) {
+    buildStyleSchedule();
+    resetStyleCursor(getPreviewNowSec());
+  }
+}
 
 /* ---------- Edit ---------- */
 function startEdit(i){
@@ -1204,8 +1674,7 @@ function startEdit(i){
     $("#bulletStartSec").value = n.bulletSpawnTime??0; $("#bulletStartBeat").value = n.bulletSpawnBeat??0;
     $("#bulletToDockSec").value = n.bulletToDockDuration??0; $("#bulletToDockBeats").value = n.bulletToDockBeats??0;
     $("#bulletDockToDespawnSec").value = n.bulletDockToDespawnDuration??0; $("#bulletDockToDespawnBeats").value = n.bulletDockToDespawnBeats??0;
-  }
-  if(n.type==="Camera"){
+  }else if(n.type==="Camera"){
     $("#camStartSec").value  = n.startTime??0;
     $("#camStartBeat").value = n.startBeat??0;
     $("#camDurSec").value    = n.duration??0;
@@ -1220,38 +1689,93 @@ function startEdit(i){
     $("#camEase").value      = n.camEase || "";
     $("#camUseBeats").checked = !!n.camUseBeats;
     $("#camUseUIScaling").checked = !!n.camUseUIScaling;
-  }
+  } else if (n.type === "Line") {
+  // 패널 전환
+  document.getElementById("noteType").value = "Line";
+  document.getElementById("noteType").dispatchEvent(new Event("change"));
+
+  // 값 채워넣기 (undefined면 공백/0 처리)
+  document.getElementById("stTarget").value     = n.target || "grid-all";
+  document.getElementById("stIndex").value      = Number.isFinite(n.index) ? n.index : 0;
+
+  document.getElementById("stTimeSec").value    = (n.timeSec  ?? "");
+  document.getElementById("stTimeBeat").value   = (n.timeBeat ?? "");
+
+  document.getElementById("stFadeSec").value    = Number.isFinite(n.fadeSec)  ? n.fadeSec  : 0;
+  document.getElementById("stFadeBeats").value  = Number.isFinite(n.fadeBeat) ? n.fadeBeat : 0;
+
+  const hex = (n.color && typeof n.color === "string") ? n.color : "#ffffffff";
+  document.getElementById("stColorText").value  = hex;
+  // color picker는 #RRGGBB만 받으므로 앞 7자리만
+  const pick = document.getElementById("stColorPick");
+  if (pick) { pick.value = /^#([0-9a-f]{6})/i.test(hex) ? hex.slice(0,7) : "#ffffff"; }
+}
+
   drawView(); renderNotes(); refreshAddButtons(); updateBulletStageLabel();
 }
 function saveEdit(){
-  if(editIndex===null) return;
-  const idx=editIndex, t=editType, prev=chart.notes[idx];
-  if(t==="Grid"){
-    const [cs,rs]=($("#cellCR").value||"1,1").split(","); const c=parseInt(cs||"1"), r=parseInt(rs||"1");
-    chart.notes[idx]={...prev,type:"Grid",cell:{x:c,y:r},judgeTime:num($("#judgeTimeSec").value),judgeBeat:num($("#judgeBeat").value)};
-  }else if(t==="CircleTap"){
-    const [xs,ys]=($("#circlePos").value||"960,540").split(","); const x=clamp(parseFloat(xs||"960"),0,REF_W), y=clamp(parseFloat(ys||"540"),0,REF_H);
-    chart.notes[idx]={...prev,type:"CircleTap",absPos:{x,y},judgeTime:num($("#circleJudgeSec").value),judgeBeat:num($("#circleJudgeBeat").value)};
-  }else if(t==="Slider"){
-    if(pathPtsAbs.length<2){ alert("Path needs >= 2 points"); return; }
-    chart.notes[idx]={...prev,type:"Slider",absPath:pathPtsAbs.map(p=>({x:Math.round(p.x),y:Math.round(p.y)})),
-      startTime:num($("#sliderStartSec").value),startBeat:num($("#sliderStartBeat").value),
-      duration:num($("#sliderDurSec").value),durationBeats:num($("#sliderDurBeats").value)};
-  }else if(t==="Bullet"){
-    const spawn=parseAbsXY($("#bulletSpawn").value,"192,540"), dock=parseAbsXY($("#bulletDock").value,"960,540"), desp=parseAbsXY($("#bulletDespawn").value,"1728,540");
-    chart.notes[idx]={...prev,type:"Bullet",
-      bulletSpawnPos:spawn, bulletDockPos:dock, bulletDespawnPos:desp,
-      bulletSpawnTime:num($("#bulletStartSec").value), bulletSpawnBeat:num($("#bulletStartBeat").value),
-      bulletToDockDuration:num($("#bulletToDockSec").value), bulletToDockBeats:num($("#bulletToDockBeats").value),
-      bulletDockToDespawnDuration:num($("#bulletDockToDespawnSec").value), bulletDockToDespawnBeats:num($("#bulletDockToDespawnBeats").value)
+  if (editIndex === null) return;
+
+  const idx = editIndex;
+  const t   = editType;
+  const prev = chart.notes[idx];
+
+  if (t === "Grid"){
+    const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
+    const c = parseInt(cs||"1"), r = parseInt(rs||"1");
+    chart.notes[idx] = {
+      ...prev, type:"Grid",
+      cell:{x:c,y:r},
+      judgeTime:num($("#judgeTimeSec").value),
+      judgeBeat:num($("#judgeBeat").value)
     };
-  }else if(t==="Camera"){
+
+  } else if (t === "CircleTap"){
+    const [xs,ys] = ($("#circlePos").value||"960,540").split(",");
+    const x = clamp(parseFloat(xs||"960"),0,REF_W);
+    const y = clamp(parseFloat(ys||"540"),0,REF_H);
+    chart.notes[idx] = {
+      ...prev, type:"CircleTap",
+      absPos:{x,y},
+      judgeTime:num($("#circleJudgeSec").value),
+      judgeBeat:num($("#circleJudgeBeat").value)
+    };
+
+  } else if (t === "Slider"){
+    if (pathPtsAbs.length < 2){ alert("Path needs >= 2 points"); return; }
+    chart.notes[idx] = {
+      ...prev, type:"Slider",
+      absPath: pathPtsAbs.map(p=>({x:Math.round(p.x),y:Math.round(p.y)})),
+      startTime:num($("#sliderStartSec").value),
+      startBeat:num($("#sliderStartBeat").value),
+      duration:num($("#sliderDurSec").value),
+      durationBeats:num($("#sliderDurBeats").value)
+    };
+
+  } else if (t === "Bullet"){
+    const spawn = parseAbsXY($("#bulletSpawn").value,"192,540");
+    const dock  = parseAbsXY($("#bulletDock").value,"960,540");
+    const desp  = parseAbsXY($("#bulletDespawn").value,"1728,540");
+    chart.notes[idx] = {
+      ...prev, type:"Bullet",
+      bulletSpawnPos:spawn, bulletDockPos:dock, bulletDespawnPos:desp,
+      bulletSpawnTime:num($("#bulletStartSec").value),
+      bulletSpawnBeat:num($("#bulletStartBeat").value),
+      bulletToDockDuration:num($("#bulletToDockSec").value),
+      bulletToDockBeats:num($("#bulletToDockBeats").value),
+      bulletDockToDespawnDuration:num($("#bulletDockToDespawnSec").value),
+      bulletDockToDespawnBeats:num($("#bulletDockToDespawnBeats").value)
+    };
+
+  } else if (t === "Camera"){
     const camAffectHeight = $("#camAffectHeight").checked;
     const camAffectAngle  = $("#camAffectAngle").checked;
     const camAffectCenter = $("#camAffectCenter").checked;
     const [xs,ys] = ($("#camCenterPx").value||"960,540").split(",");
-    const camCenterPx = { x: clamp(parseFloat(xs||"960"),0,REF_W),
-                          y: clamp(parseFloat(ys||"540"),0,REF_H) };
+    const camCenterPx = {
+      x: clamp(parseFloat(xs||"960"),0,REF_W),
+      y: clamp(parseFloat(ys||"540"),0,REF_H)
+    };
     chart.notes[idx] = {
       ...prev, type:"Camera",
       startTime:num($("#camStartSec").value),
@@ -1266,9 +1790,52 @@ function saveEdit(){
       camUseBeats: $("#camUseBeats").checked,
       camUseUIScaling: $("#camUseUIScaling").checked
     };
+
+  } else if (t === "Line") {
+    // —— Line 전용 (fadeBeat 반드시 보존) ——
+    const target    = document.getElementById("stTarget").value || "grid-all";
+    const index     = Number(document.getElementById("stIndex").value || 0);
+
+    const timeSecV  = document.getElementById("stTimeSec").value;
+    const timeBeatV = document.getElementById("stTimeBeat").value;
+    const fadeSecV  = document.getElementById("stFadeSec").value;
+    const fadeBeatV = document.getElementById("stFadeBeats").value;
+
+    const timeSec   = (timeSecV  === "" ? undefined : +timeSecV);
+    const timeBeat  = (timeBeatV === "" ? undefined : +timeBeatV);
+    const fadeSec   = (fadeSecV  === "" ? 0 : Math.max(0, +fadeSecV));
+    const fadeBeat  = (fadeBeatV === "" ? 0 : Math.max(0, +fadeBeatV));
+
+    const colorTxt  = document.getElementById("stColorText").value;
+    const color     = normalizeHex8(colorTxt);
+
+    chart.notes[idx] = {
+      ...prev,
+      type: "Line",
+      target,
+      index,
+      // 사용자가 입력한 축을 그대로 저장 (공란은 undefined 유지)
+      timeSec,
+      timeBeat,
+      fadeSec,
+      fadeBeat,   // ★ Unity 파서가 읽는 정확한 키
+      color
+    };
   }
-  cancelEdit(false); renderNotes();
+
+  // 편집 종료/갱신
+  cancelEdit(false);
+  editIndex = null;
+  editType  = null;
+  document.getElementById("editBar").classList.remove("active");
+
+  if (typeof buildStyleSchedule === "function") buildStyleSchedule();
+  drawView?.();
+  drawWave?.();
+  renderNotes?.();
 }
+
+
 function cancelEdit(reset=true){
   editIndex=null; editType=null; $("#editBar").classList.remove("active");
   if(reset){
@@ -1295,55 +1862,111 @@ function ensureCreatedAt(){ let t0=Date.now(); for(let n of chart.notes){ if(n._
 function rid(){ return (crypto.randomUUID && crypto.randomUUID()) || (Math.random().toString(36).slice(2)+Date.now().toString(36)); }
 
 function renderNotes(){
-  chart.title=$("#title").value; chart.bpm=num($("#bpm").value); chart.timeMode=$("#timeMode").value;
-  chart.startOffset=num($("#startOffsetSec").value); chart.startOffsetBeats=num($("#startOffsetBeats").value);
-  ensureCreatedAt();
-  const tbody=$("#notesTable tbody"); tbody.innerHTML="";
-  chart.notes.forEach((n,i)=>{
-    const tr=document.createElement("tr"); tr.dataset.index=i; if(editIndex===i) tr.classList.add("editrow");
-    const tdIdx=cel("td","muted",String(i+1));
-    const tdType=cel("td","","<span class=\"pill\">"+n.type+"</span>",true);
-    let data="";
-    if(n.type==="Grid"){ data=`cell=(${n.cell.x},${n.cell.y})`; }
-    else if(n.type==="CircleTap"){
-      const p = n.absPos || {x:REF_W/2,y:REF_H/2};
-      data=`pos=(${Math.round(p.x)},${Math.round(p.y)})`;
+  try{
+    chart.title=$("#title")?.value ?? chart.title ?? "New Chart";
+    chart.bpm=num($("#bpm")?.value ?? chart.bpm ?? 120);
+    chart.timeMode=$("#timeMode")?.value ?? chart.timeMode ?? "Seconds";
+    chart.startOffset=num($("#startOffsetSec")?.value ?? chart.startOffset ?? 0);
+    chart.startOffsetBeats=num($("#startOffsetBeats")?.value ?? chart.startOffsetBeats ?? 0);
+    ensureCreatedAt();
+
+    const table = document.querySelector("#notesTable");
+    if (!table) { console.warn("[renderNotes] #notesTable not found"); return; }
+
+    // ★ tbody가 없으면 만들어서 붙임 (브라우저/머지 이슈 방지)
+    let tbody = table.querySelector("tbody");
+    if (!tbody){
+      tbody = document.createElement("tbody");
+      table.appendChild(tbody);
     }
-    else if(n.type==="Slider"){ data=`pts=${(n.absPath||[]).length}`; }
-    else if(n.type==="Bullet"){
-      const s = n.bulletSpawnPos || {x:192,y:540};
-      const d = n.bulletDockPos  || {x:960,y:540};
-      const e = n.bulletDespawnPos || {x:1728,y:540};
-      data=`S(${Math.round(s.x)},${Math.round(s.y)}) Dk(${Math.round(d.x)},${Math.round(d.y)}) De(${Math.round(e.x)},${Math.round(e.y)})`;
-    }else if(n.type==="Camera"){
-      const flags = [
-        n.camAffectHeight ? `H=${Math.round(n.camHeightPx||0)}px` : null,
-        n.camAffectAngle  ? `A=${fmt(n.camAngleDegZ)}°` : null,
-        n.camAffectCenter ? `C=(${Math.round(n.camCenterPx?.x||960)},${Math.round(n.camCenterPx?.y||540)})` : null
-      ].filter(Boolean).join(" · ");
-      data = flags || "(no axes)";
+    tbody.innerHTML = "";
+
+    const notes = Array.isArray(chart.notes) ? chart.notes : [];
+    notes.forEach((n,i)=>{
+      const tr=document.createElement("tr"); tr.dataset.index=i; if(editIndex===i) tr.classList.add("editrow");
+
+      const tdIdx=cel("td","muted",String(i+1));
+      const tdType=cel("td","","<span class=\"pill\">"+(n.type||"-")+"</span>",true);
+
+      // ---- data 칸
+      let data = "";
+      if (n.type==="Grid"){
+        data=`cell=(${n.cell?.x??"-"},${n.cell?.y??"-"})`;
+      } else if (n.type==="CircleTap"){
+        const p = n.absPos || {x:REF_W/2,y:REF_H/2};
+        data=`pos=(${Math.round(p.x)},${Math.round(p.y)})`;
+      } else if (n.type==="Slider"){
+        data=`pts=${(n.absPath||[]).length}`;
+      } else if (n.type==="Bullet"){
+        const s=n.bulletSpawnPos||{x:192,y:540}, d=n.bulletDockPos||{x:960,y:540}, e=n.bulletDespawnPos||{x:1728,y:540};
+        data=`S(${Math.round(s.x)},${Math.round(s.y)}) Dk(${Math.round(d.x)},${Math.round(d.y)}) De(${Math.round(e.x)},${Math.round(e.y)})`;
+      } else if (n.type==="Camera"){
+        const flags = [
+          n.camAffectHeight ? `H=${Math.round(n.camHeightPx||0)}px` : null,
+          n.camAffectAngle  ? `A=${fmt(n.camAngleDegZ)}°` : null,
+          n.camAffectCenter ? `C=(${Math.round(n.camCenterPx?.x||960)},${Math.round(n.camCenterPx?.y||540)})` : null
+        ].filter(Boolean).join(" · ");
+        data = flags || "(no axes)";
+      } else if (n.type==="Line"){ // 스타일 이벤트
+        const tgt = n.target || "grid-all";
+        const idx = n.index|0;
+        const col = (n.color || "").toString();
+        data = `${tgt}${tgt==="grid-line" ? `#${idx}` : ""} · ${col}`;
+      } else {
+        data = "(unknown)";
+      }
+      const tdData=cel("td","",data);
+
+      // ---- time 칸 (★ 선언 먼저!)
+      let timeTxt="";
+      if (n.type==="Slider"){
+        timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
+      } else if (n.type==="Bullet"){
+        timeTxt=`start=${fmt(n.bulletSpawnTime)}/${fmt(n.bulletSpawnBeat)} | toDock=${fmt(n.bulletToDockDuration)}/${fmt(n.bulletToDockBeats)} | dockToDespawn=${fmt(n.bulletDockToDespawnDuration)}/${fmt(n.bulletDockToDespawnBeats)}`;
+      } else if (n.type==="Camera"){
+        timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
+      } else if (n.type==="Line"){
+        timeTxt=`t=${fmt(n.timeSec)}/${fmt(n.timeBeat)} | fade=${fmt(n.fadeSec)}s`;
+      } else {
+        timeTxt=`t=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`;
+      }
+      const tdTime=cel("td","muted",timeTxt);
+
+      const tdSpawn=cel("td","muted","spawn="+fmt(spawnSecOf(n)));
+
+      const tdAct=document.createElement("td"); tdAct.style.display="flex"; tdAct.style.gap="6px";
+      tdAct.innerHTML = `<button onclick="startEdit(${i})">Edit</button>
+        <button class="bad" onclick="removeNote(${i})">Del</button>
+        <button onclick="moveUp(${i})">Up</button>
+        <button onclick="moveDown(${i})">Down</button>`;
+
+      tr.appendChild(tdIdx); tr.appendChild(tdType); tr.appendChild(tdData); tr.appendChild(tdTime); tr.appendChild(tdSpawn); tr.appendChild(tdAct);
+      attachRowDragHandlers(tr,i);
+      tbody.appendChild(tr);
+    });
+
+  }catch(err){
+    console.error("[renderNotes] crashed:", err);
+    // 화면에 디버그 메모 붙이기(선택)
+    const noteArea = document.querySelector("#notesTable")?.parentElement;
+    if (noteArea && !noteArea.querySelector(".notes-error")){
+      const div=document.createElement("div");
+      div.className="notes-error";
+      div.style.cssText="margin:8px 0;padding:8px;border:1px dashed #6e1c1c;color:#ffd2d2;background:#3a161610;border-radius:8px;font-size:12px";
+      div.textContent="(renderNotes 오류: 콘솔을 확인하세요)";
+      noteArea.prepend(div);
     }
-    const tdData=cel("td","",data);
-    let timeTxt="";
-    if(n.type==="Slider"){ timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`; }
-    else if(n.type==="Bullet"){ timeTxt=`start=${fmt(n.bulletSpawnTime)}/${fmt(n.bulletSpawnBeat)} | toDock=${fmt(n.bulletToDockDuration)}/${fmt(n.bulletToDockBeats)} | dockToDespawn=${fmt(n.bulletDockToDespawnDuration)}/${fmt(n.bulletDockToDespawnBeats)}`; }
-    else if(n.type==="Camera"){
-      timeTxt = `start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
-    }
-    else{ timeTxt=`t=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`; }
-    const tdTime=cel("td","muted",timeTxt);
-    const tdSpawn=cel("td","muted","spawn="+fmt(spawnSecOf(n)));
-    const tdAct=document.createElement("td"); tdAct.style.display="flex"; tdAct.style.gap="6px";
-    tdAct.innerHTML = `<button onclick="startEdit(${i})">Edit</button>
-      <button class="bad" onclick="removeNote(${i})">Del</button>
-      <button onclick="moveUp(${i})">Up</button>
-      <button onclick="moveDown(${i})">Down</button>`;
-    tr.appendChild(tdIdx); tr.appendChild(tdType); tr.appendChild(tdData); tr.appendChild(tdTime); tr.appendChild(tdSpawn); tr.appendChild(tdAct);
-    attachRowDragHandlers(tr,i); tbody.appendChild(tr);
-  });
+  }
 }
+
 function cel(tag,cls,txt,isHTML=false){ const el=document.createElement(tag); if(cls) el.className=cls; if(isHTML) el.innerHTML=txt; else el.textContent=txt; return el; }
-function removeNote(i){ if(editIndex===i) cancelEdit(); chart.notes.splice(i,1); renderNotes(); }
+function removeNote(i){
+  if(editIndex===i) cancelEdit(); chart.notes.splice(i,1); renderNotes();
+
+  //  삭제 후에도 재빌드
+  buildStyleSchedule();
+  resetStyleCursor(getPreviewNowSec());
+}
 function moveUp(i){ if(i<=0) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i-1,0,it); renderNotes(); }
 function moveDown(i){ if(i>=chart.notes.length-1) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i+1,0,it); renderNotes(); }
 let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("draggable","true"); tr.addEventListener("dragstart",(e)=>{ dragIndex=idx; tr.style.opacity="0.5"; }); tr.addEventListener("dragend",()=>{ tr.style.opacity=""; dragIndex=null; }); tr.addEventListener("dragover",(e)=>{ e.preventDefault(); }); tr.addEventListener("drop",(e)=>{ e.preventDefault(); const targetIdx=parseInt(tr.dataset.index,10); if(dragIndex===null || dragIndex===targetIdx) return; const item=chart.notes.splice(dragIndex,1)[0]; chart.notes.splice(targetIdx,0,item); renderNotes(); }); }
@@ -1351,14 +1974,11 @@ let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("dra
 /* ---------- 정렬 & 시간 계산 ---------- */
 function spb(){ const bpm = num($("#bpm").value); return bpm>0 ? 60/bpm : 0; }
 function getNoteTimeSec(n){
-  if (n.type === "Slider") {
-    return chartTimeToPlaybackSec({ sec: n.startTime,  beat: n.startBeat });
-  }
-  if (n.type === "Bullet") {
-    return chartTimeToPlaybackSec({ sec: n.bulletSpawnTime,  beat: n.bulletSpawnBeat });
-  }
-  // Grid / CircleTap
-  return chartTimeToPlaybackSec({ sec: n.judgeTime, beat: n.judgeBeat });
+  if (n.type === "Slider")  return chartTimeToPlaybackSec({ sec:n.startTime, beat:n.startBeat });
+  if (n.type === "Bullet")  return chartTimeToPlaybackSec({ sec:n.bulletSpawnTime, beat:n.bulletSpawnBeat });
+  if (n.type === "Camera")  return getCameraStartSec(n);
+  if (n.type === "Line")    return getStyleStartSec(n);             
+  return chartTimeToPlaybackSec({ sec:n.judgeTime, beat:n.judgeBeat });
 }
 
 function packIntoRows(intervals){
@@ -1393,7 +2013,10 @@ function getNoteTimeBeats(n){
   const present = v => v != null && isFinite(v);
   const beatsFromSec = (sec)=> present(sec) ? sec / (S||1) : null;
   const pick = (primary, fallback)=> present(primary) ? primary : (present(fallback) ? fallback : 0);
-
+  if (n.type === "Line"){
+    const sec = n.timeSec, beat = n.timeBeat;
+    return byBeats ? pick(beat, beatsFromSec(sec)) : pick(beatsFromSec(sec), beat);
+  }
   if(n.type === "Slider"){
     const sec = n.startTime;
     const beat = n.startBeat;
@@ -1418,6 +2041,7 @@ function spawnSecOf(n){
  if (n.type === "Slider")    return getNoteTimeSec(n) - resolveSliderLeadSec();
   if (n.type === "Bullet")    return getNoteTimeSec(n);
   if (n.type === "Camera") return getCameraStartSec(n);
+  if (n.type === "Line")      return getStyleStartSec(n);
   return getNoteTimeSec(n);
   return getNoteTimeSec(n);
 }
@@ -1429,14 +2053,28 @@ function reindexNotes(){ for(let i=0;i<chart.notes.length;i++){ chart.notes[i]._
 
 /* ---------- Export/Import ---------- */
 function levelChartJSON(){
+  const fixedNotes = (chart.notes || []).map(n=>{
+    if(n.type === "Line"){
+      // 소문자 키가 있으면 끌어올림
+      const fb = Number.isFinite(n.fadeBeat) ? n.fadeBeat
+               : (Number.isFinite(n.fadebeat) ? n.fadebeat : undefined);
+      return { ...n, ...(fb !== undefined ? { fadeBeat: fb } : {}) };
+    }
+    return n;
+  });
   const payload = {
     schemaVersion: 2,
-    title: chart.title, bpm: chart.bpm, timeMode: chart.timeMode,
-    startOffset: chart.startOffset, startOffsetBeats: chart.startOffsetBeats,
-    notes: chart.notes
+    title: chart.title,
+    bpm: chart.bpm,
+    timeMode: chart.timeMode,  // "Beats"/"Seconds" 그대로
+    startOffset: chart.startOffset,
+    startOffsetBeats: chart.startOffsetBeats,
+    notes: fixedNotes
   };
   return JSON.stringify(payload, null, 2);
 }
+
+
 function downloadJSON(){
   const blob=new Blob([levelChartJSON()],{type:"application/json;charset=utf-8"});
   const url=URL.createObjectURL(blob); const a=document.createElement("a");
@@ -1475,10 +2113,15 @@ $("#importFile").addEventListener("change",(e)=>{
       chart.notes=Array.isArray(obj.notes)?obj.notes:[];
       $("#title").value=chart.title; $("#bpm").value=chart.bpm; $("#timeMode").value=chart.timeMode;
       $("#startOffsetSec").value=chart.startOffset; $("#startOffsetBeats").value=chart.startOffsetBeats;
-      ensureCreatedAt(); renderNotes(); drawWave();
+      ensureCreatedAt(); renderNotes(); drawWave();buildStyleSchedule(); resetStyleCursor(0);
     }catch(err){ alert("JSON parse failed: "+err); }
   };
   r.readAsText(f,"utf-8");
+  ensureCreatedAt(); renderNotes(); drawWave();
+
+
+  buildStyleSchedule();
+  resetStyleCursor(0);
 });
 function sanitizeName(s){
   // 파일/폴더명에 안 되는 문자 제거(윈도우/맥 공통)
@@ -1623,8 +2266,21 @@ function pauseAccurate(){
   previewTimeSec = now;          // ⟵ 프리뷰 고정
   curTimeEl.textContent = now.toFixed(3);
   window.getPreviewNowSec = () => now;
+  applyStyleEvents(now);
   redrawBeat();
   drawWave();
+}
+
+function resetStyleCursor(nowSec){
+  // styleEvents는 tSec 오름차순 정렬이라고 가정
+  let lo = 0, hi = styleEvents.length;
+  while (lo < hi){
+    const mid = (lo + hi) >> 1;
+    if (styleEvents[mid].tSec <= nowSec) lo = mid + 1;
+    else hi = mid;
+  }
+  nextStyleIdx = lo; // 이제 다음 while에서 nowSec 이후 이벤트부터 소비
+  _lastStyleNow = nowSec; 
 }
 
 function seekAccurate(toSec){
@@ -1637,7 +2293,9 @@ function seekAccurate(toSec){
       previewTimeSec = t;
       curTimeEl.textContent = t.toFixed(3);
       window.getPreviewNowSec = () => t;
+      applyStyleEvents(t); 
     }
+    if (typeof applyStyleEvents === "function") applyStyleEvents(tt);
     redrawBeat();
     drawWave();
     return;
@@ -1650,6 +2308,7 @@ function seekAccurate(toSec){
     previewTimeSec = t;
     curTimeEl.textContent = t.toFixed(3);
     window.getPreviewNowSec = () => t;
+    if (typeof applyStyleEvents === "function") applyStyleEvents(t);
     redrawBeat();
     drawWave();
   }
@@ -1705,6 +2364,9 @@ function syncUiAccurate(){
     if (!AC_enabled || !AC_buf) return;
     const t = qms(getNowAccurate());
     curTimeEl.textContent = t.toFixed(3);
+
+    applyStyleEvents(t);
+
     const bi = beatInfoAt(t);
     curBeatEl.textContent = bi.valid ? bi.text : "-";
     window.getPreviewNowSec = () => t;   // 미리보기 타임 소스 통합
@@ -1759,6 +2421,8 @@ audioFileInput.addEventListener("change", async (e)=>{
     viewEnd   = d;
     drawWave();
     setWaveControlsEnabled(true); // 이 함수는 반드시 위쪽에 선언
+    buildStyleSchedule();
+    resetStyleCursor(0);
   };
 
   // === WebAudio로 한 번만 디코드 → 둘 다 재사용 ===
@@ -1781,17 +2445,32 @@ audioFileInput.addEventListener("change", async (e)=>{
     viewEnd   = d;
     drawWave();
     setWaveControlsEnabled(true);
+    buildStyleSchedule();
+    resetStyleCursor(0);
   }
 
   // 캔버스 DPI/크기 반영
   resizeWaveCanvas();
 });
+let _styleBaseColor = rgba(255, 255, 255, 255); 
+function applyStyleEvents(nowSec){
+  if (!Array.isArray(styleEvents) || styleEvents.length === 0){
+    setGridColor(_styleBaseColor);
+    _styleLastNow = nowSec;
+    return;
+  }
 
+  const c = evalStyleColorAt(nowSec);
+  setGridColor(c);
+
+  _styleLastNow = nowSec;
+}
 
 playBtn.onclick  = () => { (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
 pauseBtn.onclick = () => { (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
 audioEl.addEventListener("timeupdate", ()=>{
   const t = qms(audioEl.currentTime || 0);
+  applyStyleEvents(t);
   curTimeEl.textContent = t.toFixed(3);
   window.getPreviewNowSec = () => t;
   const bi=beatInfoAt(t);
@@ -2001,6 +2680,7 @@ function drawWave(){
     }
   }
   drawNoteBlocks();
+
 }
 function drawPeaksRange(ctx,w,h,buffer,vStart,vEnd,scale){
   const sr=buffer.sampleRate, ch0=buffer.getChannelData(0), ch1=(buffer.numberOfChannels>1?buffer.getChannelData(1):null);
@@ -2214,7 +2894,15 @@ function snapTime(t){
 
   return snappedSec; // 절대초(플레이백 좌표)
 }
-function redrawBeat(){ const t=audioEl.currentTime||0; const bi=beatInfoAt(t); curBeatEl.textContent=bi.valid?bi.text:"-"; drawWave(); }
+function redrawBeat(){
+  // 재생 중이든, pause 중이든 “프리뷰 커서”가 있으면 그걸 우선 사용
+  const t = (typeof getPreviewNowSec === "function")
+              ? getPreviewNowSec()
+              : (audioEl.currentTime || 0);
+
+  const bi = beatInfoAt(t);
+  curBeatEl.textContent = bi.valid ? bi.text : "-";
+}
 
 function snappedBeatsFromSec(secPlayback){
   const bpm = num($("#bpm").value);
@@ -2646,10 +3334,24 @@ function clearAll(){ chart.notes=[]; renderNotes(); drawView(); }
 
 /* ---------- Init ---------- */
 function firstLayout(){
-  const rect=view.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
-  view.width=Math.floor(rect.width*dpr); view.height=Math.floor(rect.width*dpr); ctx.setTransform(dpr,0,0,dpr,0,0);
-  buildGrid(); drawView(); renderNotes(); resizeWaveCanvas(); updateBulletStageLabel();
+  const rect=view.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  view.width=Math.floor(rect.width*dpr);
+  view.height=Math.floor(rect.width*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  buildGrid();
+  // ★ 테이블 먼저
+  renderNotes();
+  // 그 다음 그리기들
+  drawView();
+  resizeWaveCanvas();
+  updateBulletStageLabel();
+
+  // (선택) 스타일 스케줄 초기화
+  if (typeof buildStyleSchedule==="function"){ buildStyleSchedule(); resetStyleCursor(0); }
 }
+
 window.addEventListener("load", firstLayout);
 setInterval(drawView, 100);
 </script>
