@@ -1915,7 +1915,7 @@ waveCanvas.addEventListener("click", (e) => {
   const dur = getDuration();
   if (dur <= 0) return;
 
-  const t = clamp(xToTime(x), 0, dur);
+  const t = clamp(snapTime(xToTime(x)), 0, dur);
   applyTimeFromWave(t, null);     // 시킹 + 입력칸 채우기
   const tt = qms(t);
 
@@ -2107,7 +2107,7 @@ function applyTimeFromWave(t0, t1){
   const off = computeOffsetSeconds();    // chart offset (sec)
 
   const toBeatsUI = (secPlayback) => (S > 0 ? (secPlayback - off) / S : 0);
-  const snap1ms   = (t) => qms(t);       // 1ms 양자화
+  const snap1ms   = (t) => snapTime(t)     // 1ms 양자화
 
   // ✅ 인자 이름과 본문 변수 통일 (secPlayback 사용)
   function fillSingleTime(secPlayback){
@@ -2609,6 +2609,7 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
 
 
 
