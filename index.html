@@ -68,6 +68,8 @@
         <option value="Bullet">Bullet</option>
         <option value="Camera">Camera</option>
         <option value="Line">Line</option>
+        <option value="Voice">Voice</option>
+        <option value="Image">Image</option>
       </select>
     </div>
 
@@ -198,6 +200,68 @@
   </div>
 
   <button id="btnAddCamera" class="primary" onclick="addCamera()">Add Camera</button>
+</div>
+
+<div id="voiceInputs" style="display:none">
+  <div class="hint">FMOD 이벤트 경로를 그대로 씁니다. 예) <code>event:/ui/voice/line_01</code></div>
+
+  <div class="row"><label>FMOD Event</label>
+    <input id="voiceEventPath" type="text" placeholder="event:/...">
+  </div>
+
+  <div class="row"><label>Start (sec)</label>
+    <input id="voiceStartSec" type="number" step="0.001" value="0.000">
+  </div>
+  <div class="row"><label>Start (beats)</label>
+    <input id="voiceStartBeat" type="number" step="0.001" value="0.000">
+  </div>
+
+  <div class="row two">
+    <div><label>Fade In (sec)</label><input id="voiceFadeInSec" type="number" step="0.01" value="0.00"></div>
+    <div><label>Fade Out (sec)</label><input id="voiceFadeOutSec" type="number" step="0.01" value="0.00"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Volume (0~1)</label><input id="voiceVolume" type="number" step="0.01" min="0" max="1" value="1.00"></div>
+    <div><label>Pitch</label><input id="voicePitch" type="number" step="0.01" value="1.00"></div>
+  </div>
+
+  <button class="primary" onclick="addVoice()">Add Voice</button>
+</div>
+
+<!-- Image (overlay sprite) -->
+<div id="imageInputs" style="display:none">
+  <div class="hint">이미지 에셋 키(또는 리소스 경로)를 지정해서 화면에 띄웁니다.</div>
+
+  <div class="row"><label>Asset Key</label>
+    <input id="imgKey" type="text" placeholder="ui/portrait_01">
+  </div>
+
+  <div class="row two">
+    <div><label>Start (sec)</label><input id="imgStartSec" type="number" step="0.001" value="0.000"></div>
+    <div><label>Start (beats)</label><input id="imgStartBeat" type="number" step="0.001" value="0.000"></div>
+  </div>
+  <div class="row two">
+    <div><label>Duration (sec)</label><input id="imgDurSec" type="number" step="0.001" value="2.000"></div>
+    <div><label>Duration (beats)</label><input id="imgDurBeats" type="number" step="0.001" value="0.000"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Pos (x,y)</label><input id="imgPos" type="text" value="960,540"></div>
+    <div><label>Size (w,h px)</label><input id="imgSize" type="text" value="512,512"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Alpha (0~1)</label><input id="imgAlpha" type="number" step="0.01" min="0" max="1" value="1.00"></div>
+    <div><label>Rotation (deg)</label><input id="imgRotDeg" type="number" step="0.1" value="0.0"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Fade In (sec)</label><input id="imgFadeInSec" type="number" step="0.01" value="0.00"></div>
+    <div><label>Fade Out (sec)</label><input id="imgFadeOutSec" type="number" step="0.01" value="0.00"></div>
+  </div>
+
+  <button class="primary" onclick="addImage()">Add Image</button>
 </div>
 
 <div id="styleInputs" style="display:none">
@@ -426,7 +490,7 @@ const STYLE_TYPE = "Line";
 
 const WAVE_ROW_H   = 18; // 서브레인 한 칸 높이
 const WAVE_ROW_GAP = 4;
-const WAVE_TYPES = ["Grid","CircleTap","Slider","Bullet","Camera","Line"];
+const WAVE_TYPES = ["Grid","CircleTap","Slider","Bullet","Camera","Line","Voice","Image"];
 let waveBlocks = [];     // [{x,y,w,h, idx, type, row, t0,t1}]
 
 const GRID_LEFT   = 648;
@@ -833,6 +897,9 @@ $("#noteType").addEventListener("change", e=>{
   $("#bulletInputs").style.display = (t==="Bullet") ? "block":"none";
   $("#cameraInputs").style.display = (t==="Camera") ? "block":"none";
   $("#styleInputs").style.display  = (t === "Line")       ? "block" : "none";
+  $("#voiceInputs").style.display = (t==="Voice") ? "block" : "none";
+  $("#imageInputs").style.display = (t==="Image") ? "block" : "none";
+
   refreshAddButtons();
 });
 
@@ -1042,6 +1109,56 @@ function drawCircleAbs(ctx, abs, radiusPx, stroke="#fff", fill=null, lineW=2){
   ctx.stroke();
   ctx.restore();
 }
+
+function addVoice(){
+  if (editIndex!==null) return;
+
+  const note = {
+    type: "Voice",
+    fmodEvent: ($("#voiceEventPath").value || "").trim(),
+
+    startTime:  num($("#voiceStartSec").value),
+    startBeat:  num($("#voiceStartBeat").value),
+
+    fadeInSec:  num($("#voiceFadeInSec").value),
+    fadeOutSec: num($("#voiceFadeOutSec").value),
+
+    volume: Math.max(0, Math.min(1, num($("#voiceVolume").value))),
+    pitch:  num($("#voicePitch").value) || 1
+  };
+  pushNote(note);
+}
+
+function addImage(){
+  if (editIndex!==null) return;
+
+  const pos = parseAbsXY($("#imgPos").value, "960,540");
+  const size = (function(s){
+    const [ws,hs] = (s||"512,512").split(",");
+    return { w: Math.max(1, parseFloat(ws)||512), h: Math.max(1, parseFloat(hs)||512) };
+  })($("#imgSize").value);
+
+  const note = {
+    type: "Image",
+    key: ($("#imgKey").value || "").trim(),
+
+    startTime:    num($("#imgStartSec").value),
+    startBeat:    num($("#imgStartBeat").value),
+    duration:     num($("#imgDurSec").value),
+    durationBeats:num($("#imgDurBeats").value),
+
+    absPos: { x: clamp(pos.x,0,REF_W), y: clamp(pos.y,0,REF_H) },
+    sizePx: { w: size.w, h: size.h },
+
+    alpha:  Math.max(0, Math.min(1, num($("#imgAlpha").value))),
+    rotDeg: num($("#imgRotDeg").value) || 0,
+
+    fadeInSec:  num($("#imgFadeInSec").value),
+    fadeOutSec: num($("#imgFadeOutSec").value)
+  };
+  pushNote(note);
+}
+
 
 // 교체: sizePx 그대로 받고 내부에서만 스케일
 function drawRectAbs(ctx, centerAbs, sizePx, stroke="#fff", fill=null, lineW=2, radius=8){
@@ -1272,124 +1389,156 @@ function noteTimeWindowSec(n){
     const t0 = getBulletSpawnSec(n);
     const t1 = t0 + getBulletToDockSec(n) + getBulletDockToDespawnSec(n);
     return {t0, t1};
+  } if(n.type==="Voice"){
+  const t0 = chartTimeToPlaybackSec({ sec: n.startTime, beat: n.startBeat });
+  // 고정 폭(시각화용 최소 폭)
+  const spanSec = 0.1;
+  return { t0, t1: t0 + spanSec };
   }
-  // Grid / CircleTap : 한 점 → 화면에서 보이도록 최소폭 부여
-  const t = getNoteTimeSec(n); // 기존 함수 그대로 사용
-  const span = Math.max( (viewEnd-viewStart)||1, 1e-3 );
-  const minPx = 6; // 최소 시각화 폭(px)
-  const minSec = (minPx / (waveCanvas.clientWidth||1)) * span;
-  return {t0: t, t1: t + minSec};
-}
+  if(n.type==="Image"){
+    const t0 = chartTimeToPlaybackSec({ sec: n.startTime, beat: n.startBeat });
+    // 지속시간: sec 우선, 없으면 beats 환산
+    const byBeats = ($("#timeMode").value === "Beats");
+    let dur = 0;
+    if (isFinite(n.duration) && n.duration > 0) dur = n.duration;
+    else if (isFinite(n.durationBeats) && n.durationBeats > 0) dur = beatsToSec(n.durationBeats, chart.bpm);
+    // 최소폭 보장
+    const span = Math.max(dur, 0.1);
+    return { t0, t1: t0 + span };
+  }
+    // Grid / CircleTap : 한 점 → 화면에서 보이도록 최소폭 부여
+    const t = getNoteTimeSec(n); // 기존 함수 그대로 사용
+    const span = Math.max( (viewEnd-viewStart)||1, 1e-3 );
+    const minPx = 6; // 최소 시각화 폭(px)
+    const minSec = (minPx / (waveCanvas.clientWidth||1)) * span;
+    return {t0: t, t1: t + minSec};
+  }
 function drawNoteBlocks(){
-  // ─────────────────────────────────────────────────────────────
-  // 설정
-  // ─────────────────────────────────────────────────────────────
   const lanesTop = 6;
-  const STYLE_TYPE = "Line";     // 스타일/색 이벤트 타입명
-  const LINE_PIXEL_W = 8;        // 스타일 이벤트 표시 최소 폭(px)
+  const STYLE_TYPE = "Line";     // 스타일/색 이벤트(점)
+  const LINE_PIXEL_W = 8;        // Line 표시 최소 폭(px)
+  const MIN_BOX_PX   = 6;        // 구간 길이 없을 때 최소 시각화 폭(px)
+  const VOICE_MIN_PX = 18;    // Voice는 더 두껍게(클릭 편의)
+  const IMAGE_MIN_PX = 12;    // Image 최소 폭
 
   waveBlocks = [];
 
   // 타입 바스켓 준비
-  const allByType = Object.fromEntries(WAVE_TYPES.map(t=>[t,[]]));
+  const typeList = (WAVE_TYPES && WAVE_TYPES.length) ? WAVE_TYPES : ["Grid","CircleTap","Slider","Bullet","Camera","Line","Voice","Image"];
+  const allByType = Object.fromEntries(typeList.map(t => [t, []]));
 
-  // ─────────────────────────────────────────────────────────────
-  // 1) 수집 (보이는 구간만)
-  //    - Line 은 점 이벤트로 처리: view 범위 내면 고정 폭으로 중앙x를 잡아 push
-  //    - 그외는 noteTimeWindowSec에서 받은 [t0,t1] 클리핑
-  // ─────────────────────────────────────────────────────────────
-  chart.notes.forEach((n, idx)=>{
-    const t = (n.type || "Grid");
+  // 작은 헬퍼들
+  const beatsToSecLocal = (b) => (typeof beatsToSec === "function")
+    ? beatsToSec(b, chart?.bpm)
+    : (b||0) * (60 / (chart?.bpm || 120));
 
+  const durSecGeneric = (n) => {
+    // duration 우선, 없으면 durationBeats 환산, 둘 다 없으면 0
+    if (Number.isFinite(n?.duration))       return Math.max(0, n.duration);
+    if (Number.isFinite(n?.durationBeats))  return Math.max(0, beatsToSecLocal(n.durationBeats));
+    return 0;
+  };
+
+  const minSecFor1px = ((viewEnd - viewStart) || 1) / Math.max(1, (waveCanvas?.clientWidth || waveCanvas?.width || 1000));
+  const minBlockSec  = MIN_BOX_PX * minSecFor1px;
+
+  // 1) 수집
+  (chart.notes || []).forEach((n, idx) => {
+    const t = n.type || "Grid";
+
+    // Line = 점 이벤트
     if (t === STYLE_TYPE){
-      // Line/Style 이벤트의 트리거 시간(sec) 계산
-      // - 사용 중인 스키마에 맞춰 우선순위로 가져옴
-      const tLineSec = getLineTriggerSec(n);
+      const tSec = getNoteTimeSec(n);  // Line/Voice/Image도 여기서 통일
+      if (tSec < viewStart || tSec > viewEnd) return;
 
-      // 보이는 구간 판정
-      if (tLineSec < viewStart || tLineSec > viewEnd) return;
-
-      const xc = timeToX(tLineSec);
-      const x0 = xc - LINE_PIXEL_W/2;
-      const x1 = xc + LINE_PIXEL_W/2;
-
-      // 색상(있으면 사용) 저장해두면 4)에서 활용
+      const xc = timeToX(tSec);
+      const x0 = xc;
+      const x1 = xc + LINE_PIXEL_W*2;
       const color = n.color || "#ffffff";
 
       allByType[t].push({
         x0, x1, idx, type: t,
-        t0: tLineSec, t1: tLineSec,
+        t0: tSec, t1: tSec,
         isPoint: true,
         color
       });
       return;
     }
 
-    // 일반 노트(구간형)
-    const { t0, t1 } = noteTimeWindowSec(n);
-    const a = Math.max(t0, viewStart), b = Math.min(t1, viewEnd);
+    // Voice / Image = startBeat(또는 startTime)에서 시작하는 구간형
+    if (t === "Voice" || t === "Image"){
+      const t0 = getNoteTimeSec(n);     // startBeat / startTime 기반
+      const d  = durSecGeneric(n);      // 없으면 0
+      const t1 = t0 + LINE_PIXEL_W/5;   // ← 최소 폭 강제!
+
+      const a = Math.max(t0, viewStart);
+      const b = Math.min(t1, viewEnd);
+      if (b <= a) return;
+
+      const x0 = timeToX(a);
+      const x1 = timeToX(b);
+      allByType[t].push({ x0, x1, idx, type: t, t0: a, t1: b });
+      return;
+    }
+
+
+    // 그 외 기존 노트(구간형 계산은 기존 함수 사용)
+    const win = noteTimeWindowSec(n);
+    if (!win) return;
+    const a = Math.max(win.t0, viewStart);
+    const b = Math.min(win.t1, viewEnd);
     if (b <= a) return;
 
-    const x0 = timeToX(a), x1 = timeToX(b);
+    const x0 = timeToX(a);
+    const x1 = timeToX(b);
     allByType[t].push({ x0, x1, idx, type: t, t0: a, t1: b });
   });
 
-  // ─────────────────────────────────────────────────────────────
-  // 2) 타입별 패킹 (행수 계산)
-  // ─────────────────────────────────────────────────────────────
+  // 2) 타입별 패킹
   const packedByType = {};
   const rowsByType   = {};
-  for (const t of WAVE_TYPES){
-    const { placed, rowCount } = packIntoRows(allByType[t]);
+  for (const t of typeList){
+    const src = allByType[t] || [];
+    const { placed, rowCount } = packIntoRows(src);
     packedByType[t] = placed;
     rowsByType[t]   = rowCount;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 3) 타입별 베이스 Y (최대 행 고려해서 밴드 높이 확보)
-  // ─────────────────────────────────────────────────────────────
+  // 3) 타입별 베이스 Y
   let yCursor = lanesTop;
   const baseYByType = {};
-  for (const t of WAVE_TYPES){
+  for (const t of typeList){
     baseYByType[t] = yCursor;
     const rows = Math.max(1, rowsByType[t] || 0);
-    yCursor += rows * (WAVE_ROW_H + WAVE_ROW_GAP) + 6; // 타입 간 추가 간격
+    yCursor += rows * (WAVE_ROW_H + WAVE_ROW_GAP) + 6;
   }
 
-  // ─────────────────────────────────────────────────────────────
   // 4) 그리기 & waveBlocks 적재
-  //    - Line 은 점 이벤트용 색상/스타일을 별도 처리
-  // ─────────────────────────────────────────────────────────────
-  for (const t of WAVE_TYPES){
+  for (const t of typeList){
     const items = packedByType[t] || [];
     for (const it of items){
       const rowY = baseYByType[t] + it.row * (WAVE_ROW_H + WAVE_ROW_GAP);
       const w    = Math.max(2, it.x1 - it.x0);
 
-      // 기본 색상 팔레트
+      // 기본 팔레트
       let fill="rgba(102,217,239,0.18)", stroke="#66d9ef";
       if (t==="Grid"){       fill="rgba(110,231,183,0.20)"; stroke="#6ee7b7"; }
       if (t==="CircleTap"){  fill="rgba(66,180,255,0.20)";  stroke="#44aaff"; }
       if (t==="Slider"){     fill="rgba(102,217,239,0.22)"; stroke="#66d9ef"; }
       if (t==="Bullet"){     fill="rgba(251,191,36,0.24)";  stroke="#fbbf24"; }
       if (t==="Camera"){     fill="rgba(147,197,253,0.20)"; stroke="#93c5fd"; }
+      if (t==="Voice"){      fill="rgba(196,181,253,0.22)"; stroke="#a78bfa"; } // purple
+      if (t==="Image"){      fill="rgba(244,114,182,0.22)"; stroke="#f472b6"; } // pink
 
-      // Line/Style: 데이터가 준 색을 우선
-      if (t===STYLE_TYPE){
-        // it.color: "#RRGGBB(AA)" 지원, 없으면 기존 팔레트
-        if (it.color){
-          // stroke는 진하게, fill은 옅게
-          stroke = it.color;
-          // fill 투명도 낮추기
-          // (#RRGGBB or #RRGGBBAA → rgba 변환 유틸이 있으면 써도 됨)
-          fill = stroke; // 간단: 같은 색 + 아래 globalAlpha로 조절
-        }
+      // Line 색상 우선
+      if (t===STYLE_TYPE && it.color){
+        stroke = it.color;
+        fill   = stroke;
       }
 
-      // 박스 그리기
+      // 박스
       wctx.save();
-      if (t===STYLE_TYPE){
-        // 점 이벤트: 강조 테두리 + 옅은 채움
+      if (t===STYLE_TYPE && it.isPoint){
         wctx.globalAlpha = 0.20;
         wctx.fillStyle = fill;
         wctx.fillRect(it.x0, rowY, w, WAVE_ROW_H);
@@ -1406,15 +1555,28 @@ function drawNoteBlocks(){
       }
 
       // 라벨
-      const label = (t===STYLE_TYPE)
-        ? `#${it.idx+1} ${t}${it.color ? ` ${it.color}` : ""}`
-        : `#${it.idx+1} ${t}`;
+      const label = (() => {
+        if (t===STYLE_TYPE) {
+          return `#${it.idx+1} ${t}${it.color ? ` ${it.color}` : ""}`;
+        }
+        if (t==="Voice") {
+          const ev = chart.notes?.[it.idx]?.fmodEvent || "";
+          const short = ev ? ev.split('/').slice(-2).join('/') : "Voice";
+          return `#${it.idx+1} Voice ${short}`;
+        }
+        if (t==="Image") {
+          const key = chart.notes?.[it.idx]?.imageKey || chart.notes?.[it.idx]?.src || "";
+          return `#${it.idx+1} Image ${key}`;
+        }
+        return `#${it.idx+1} ${t}`;
+      })();
+
       wctx.fillStyle = "#dfe7ff";
       wctx.font = "12px system-ui, sans-serif";
       wctx.fillText(label, it.x0+4, rowY + WAVE_ROW_H - 5);
-
       wctx.restore();
 
+      // 히트테스트용
       waveBlocks.push({
         x: it.x0, y: rowY, w, h: WAVE_ROW_H,
         idx: it.idx, type: t, row: it.row,
@@ -1709,7 +1871,34 @@ function startEdit(i){
   // color picker는 #RRGGBB만 받으므로 앞 7자리만
   const pick = document.getElementById("stColorPick");
   if (pick) { pick.value = /^#([0-9a-f]{6})/i.test(hex) ? hex.slice(0,7) : "#ffffff"; }
-}
+}else if(n.type==="Voice"){
+  $("#voiceEventPath").value = n.fmodEvent || "";
+  $("#voiceStartSec").value  = n.startTime ?? 0;
+  $("#voiceStartBeat").value = n.startBeat ?? 0;
+  $("#voiceFadeInSec").value  = n.fadeInSec ?? 0;
+  $("#voiceFadeOutSec").value = n.fadeOutSec ?? 0;
+  $("#voiceVolume").value = (n.volume ?? 1);
+  $("#voicePitch").value  = (n.pitch  ?? 1);
+
+}else if(n.type==="Image"){
+  $("#imgKey").value = n.key || "";
+
+  $("#imgStartSec").value   = n.startTime ?? 0;
+  $("#imgStartBeat").value  = n.startBeat ?? 0;
+  $("#imgDurSec").value     = n.duration ?? 0;
+  $("#imgDurBeats").value   = n.durationBeats ?? 0;
+
+  const p = n.absPos || {x:960,y:540};
+  $("#imgPos").value = `${Math.round(p.x)},${Math.round(p.y)}`;
+
+  const sz = n.sizePx || {w:512,h:512};
+  $("#imgSize").value = `${Math.max(1,Math.round(sz.w))},${Math.max(1,Math.round(sz.h))}`;
+
+  $("#imgAlpha").value   = (n.alpha ?? 1);
+  $("#imgRotDeg").value  = (n.rotDeg ?? 0);
+  $("#imgFadeInSec").value  = n.fadeInSec ?? 0;
+  $("#imgFadeOutSec").value = n.fadeOutSec ?? 0;
+  }
 
   drawView(); renderNotes(); refreshAddButtons(); updateBulletStageLabel();
 }
@@ -1821,6 +2010,41 @@ function saveEdit(){
       fadeBeat,   // ★ Unity 파서가 읽는 정확한 키
       color
     };
+  }else if(t==="Voice"){
+  const prev = chart.notes[idx] || {};
+  chart.notes[idx] = {
+    ...prev, type:"Voice",
+    fmodEvent: ($("#voiceEventPath").value||"").trim(),
+    startTime:   num($("#voiceStartSec").value),
+    startBeat:   num($("#voiceStartBeat").value),
+    fadeInSec:   num($("#voiceFadeInSec").value),
+    fadeOutSec:  num($("#voiceFadeOutSec").value),
+    volume: Math.max(0, Math.min(1, num($("#voiceVolume").value))),
+    pitch:  num($("#voicePitch").value) || 1
+  };
+
+}else if(t==="Image"){
+  const prev = chart.notes[idx] || {};
+  const pos = parseAbsXY($("#imgPos").value, "960,540");
+  const size = (function(s){
+    const [ws,hs] = (s||"512,512").split(",");
+    return { w: Math.max(1, parseFloat(ws)||512), h: Math.max(1, parseFloat(hs)||512) };
+  })($("#imgSize").value);
+
+    chart.notes[idx] = {
+      ...prev, type:"Image",
+      key: ($("#imgKey").value||"").trim(),
+      startTime:    num($("#imgStartSec").value),
+      startBeat:    num($("#imgStartBeat").value),
+      duration:     num($("#imgDurSec").value),
+      durationBeats:num($("#imgDurBeats").value),
+      absPos: { x: clamp(pos.x,0,REF_W), y: clamp(pos.y,0,REF_H) },
+      sizePx: { w: size.w, h: size.h },
+      alpha:  Math.max(0, Math.min(1, num($("#imgAlpha").value))),
+      rotDeg: num($("#imgRotDeg").value) || 0,
+      fadeInSec:  num($("#imgFadeInSec").value),
+      fadeOutSec: num($("#imgFadeOutSec").value)
+    };
   }
 
   // 편집 종료/갱신
@@ -1912,7 +2136,13 @@ function renderNotes(){
         const idx = n.index|0;
         const col = (n.color || "").toString();
         data = `${tgt}${tgt==="grid-line" ? `#${idx}` : ""} · ${col}`;
-      } else {
+      } else if (n.type==="Voice"){
+        data = n.fmodEvent || "(event:unset)";
+      }else if (n.type==="Image"){
+        const p = n.absPos ? `${Math.round(n.absPos.x)},${Math.round(n.absPos.y)}` : "?,?";
+        data = `${n.key||"(key unset)"} @ ${p}`;
+      }
+      else {
         data = "(unknown)";
       }
       const tdData=cel("td","",data);
@@ -1929,10 +2159,16 @@ function renderNotes(){
         timeTxt=`t=${fmt(n.timeSec)}/${fmt(n.timeBeat)} | fade=${fmt(n.fadeSec)}s`;
       } else {
         timeTxt=`t=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`;
+        if (n.type==="Voice" || n.type==="Image"){
+          const tReal = J_timelineStartSec(chart, n, /*includeOffset=*/true);
+          timeTxt = `start=${fmt(n.startTime)}/${fmt(n.startBeat)}`
+        }
       }
       const tdTime=cel("td","muted",timeTxt);
 
-      const tdSpawn=cel("td","muted","spawn="+fmt(spawnSecOf(n)));
+      const isVI = (n.type==="Voice" || n.type==="Image");
+      const spawnSec = spawnSecOf(n);
+      const tdSpawn=cel("td","muted","spawn="+fmt(spawnSec));
 
       const tdAct=document.createElement("td"); tdAct.style.display="flex"; tdAct.style.gap="6px";
       tdAct.innerHTML = `<button onclick="startEdit(${i})">Edit</button>
@@ -1974,12 +2210,31 @@ let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("dra
 /* ---------- 정렬 & 시간 계산 ---------- */
 function spb(){ const bpm = num($("#bpm").value); return bpm>0 ? 60/bpm : 0; }
 function getNoteTimeSec(n){
-  if (n.type === "Slider")  return chartTimeToPlaybackSec({ sec:n.startTime, beat:n.startBeat });
-  if (n.type === "Bullet")  return chartTimeToPlaybackSec({ sec:n.bulletSpawnTime, beat:n.bulletSpawnBeat });
-  if (n.type === "Camera")  return getCameraStartSec(n);
-  if (n.type === "Line")    return getStyleStartSec(n);             
-  return chartTimeToPlaybackSec({ sec:n.judgeTime, beat:n.judgeBeat });
+  switch (n.type) {
+    case "Slider":
+      return chartTimeToPlaybackSec({ sec: n.startTime,           beat: n.startBeat });
+
+    case "Bullet":
+      return chartTimeToPlaybackSec({ sec: n.bulletSpawnTime,     beat: n.bulletSpawnBeat });
+
+    case "Camera":
+      return getCameraStartSec(n); // 기존 함수
+
+    // => timeSec/timeBeat를 쓰는 이벤트들(없으면 start*로 폴백)
+    case "Line":
+    case "Voice":
+    case "Image":
+      return chartTimeToPlaybackSec({
+        sec:  (n.timeSec  ?? n.startTime ?? 0),
+        beat: (n.timeBeat ?? n.startBeat ?? 0)
+      });
+
+    // Grid / CircleTap
+    default:
+      return chartTimeToPlaybackSec({ sec: n.judgeTime, beat: n.judgeBeat });
+  }
 }
+
 
 function packIntoRows(intervals){
   // intervals: [{x0,x1, idx, type, t0,t1}]
@@ -2042,7 +2297,7 @@ function spawnSecOf(n){
   if (n.type === "Bullet")    return getNoteTimeSec(n);
   if (n.type === "Camera") return getCameraStartSec(n);
   if (n.type === "Line")      return getStyleStartSec(n);
-  return getNoteTimeSec(n);
+
   return getNoteTimeSec(n);
 }
 function sortByCreation(){ ensureCreatedAt(); chart.notes.sort((a,b)=> (a._createdAt||0)-(b._createdAt||0)); renderNotes(); }
@@ -2072,6 +2327,68 @@ function levelChartJSON(){
     notes: fixedNotes
   };
   return JSON.stringify(payload, null, 2);
+}
+
+
+// ───────── 시간/비트 변환 헬퍼 (기존 함수 재정의 없음) ─────────
+const J_EPS = 1e-6;
+
+function J_beatToSec(beat, bpm){ return (beat||0) * 60 / Math.max(1e-6, bpm||120); }
+function J_chartOffsetSec(chart){ return (chart?.startOffset||0) + J_beatToSec(chart?.startOffsetBeats||0, chart?.bpm||120); }
+
+// 가장 먼저 발견되는 "유효값" 반환(0은 유효로 취급)
+function J_firstValid(/* ...vals */){
+  for (let i=0;i<arguments.length;i++){
+    const v = arguments[i];
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'number' && Math.abs(v) <= J_EPS) return 0;
+    if (typeof v === 'number') return v;
+    if (v) return v;
+  }
+  return 0;
+}
+
+// 이벤트의 "타임라인 초" (includeOffset=true면 chart 오프셋까지 더함)
+function J_timelineStartSec(chart, n, includeOffset=true){
+  const bpm = chart?.bpm || 120;
+  // 초 우선 → 비트로 대체
+  const sec = J_firstValid(n.startTime, n.timeSec, n.judgeTime,
+                           // 비트 → 초
+                           (Math.abs(n.startBeat||0)  > J_EPS ? J_beatToSec(n.startBeat,  bpm):null),
+                           (Math.abs(n.timeBeat||0)   > J_EPS ? J_beatToSec(n.timeBeat,   bpm):null),
+                           (Math.abs(n.judgeBeat||0)  > J_EPS ? J_beatToSec(n.judgeBeat,  bpm):null),
+                           0);
+  return includeOffset ? sec + J_chartOffsetSec(chart) : sec;
+}
+
+// 이벤트 지속(초)
+function J_durationSec(chart, n){
+  const bpm = chart?.bpm || 120;
+  return J_firstValid(n.duration, n.durationSec,
+                      (Math.abs(n.durationBeats||0) > J_EPS ? J_beatToSec(n.durationBeats, bpm):null),
+                      0);
+}
+
+// Voice/Image 페이드(초)
+function J_fadeInSec(chart, n){
+  const bpm = chart?.bpm || 120;
+  return J_firstValid(n.fadeInSec,
+                      (Math.abs(n.fadeInBeat||0) > J_EPS ? J_beatToSec(n.fadeInBeat, bpm):null),
+                      0);
+}
+function J_fadeOutSec(chart, n){
+  const bpm = chart?.bpm || 120;
+  return J_firstValid(n.fadeOutSec,
+                      (Math.abs(n.fadeOutBeat||0) > J_EPS ? J_beatToSec(n.fadeOutBeat, bpm):null),
+                      0);
+}
+
+// Voice/Image 전용 "표시 구간" 계산 (기존 noteTimeWindowSec를 건드리지 않음)
+function J_timeWindowSec_VI(chart, n){
+  const t0 = J_timelineStartSec(chart, n, /*includeOffset=*/true);
+  const d  = Math.max(0, J_durationSec(chart, n));
+  const span = Math.max(d, 0.02); // 최소 폭 20ms
+  return { t0, t1: t0 + span };
 }
 
 
@@ -3357,6 +3674,8 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
+
 
 
 
