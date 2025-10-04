@@ -24,7 +24,7 @@
   button.bad{background:#3a1616;border-color:#6e1c1c;color:#ffd2d2}
   button:disabled{opacity:.5;cursor:not-allowed}
   .grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:80px;gap:6px}
-  .cell{background:#0e1220;border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .cell{border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .cell.active{outline:2px solid var(--accent)}
   .canvasWrap{display:flex;gap:12px;flex-wrap:wrap}
   /* 캔버스는 반드시 클릭을 받는다 */
@@ -82,9 +82,7 @@
       <div class="row"><label>Time (sec)</label><input id="judgeTimeSec" type="number" step="0.001" value="1.000"></div>
       <div class="row"><label>Time (beats)</label><input id="judgeBeat" type="number" step="0.001" value="1.000"></div>
       <div id="longInputs" style="display:none">
-        <div class="hint">Longnote: 시작 시각과 지속시간을 입력하면 홀드 길이가 결정됩니다.</div>
-        <div class="row"><label>Start (sec)</label><input id="longStartSec" type="number" step="0.001" value="0.000"></div>
-        <div class="row"><label>Start (beats)</label><input id="longStartBeat" type="number" step="0.001" value="0.000"></div>
+        <div class="hint">Longnote: 지속시간을 입력하면 홀드 길이가 결정됩니다.</div>
         <div class="row"><label>Duration (sec)</label><input id="longDurSec" type="number" step="0.001" value="1.000"></div>
         <div class="row"><label>Duration (beats)</label><input id="longDurBeats" type="number" step="0.001" value="1.000"></div>
       </div>
@@ -1863,26 +1861,8 @@ function addGrid(){
   }
 
   if (noteType === "Long") {
-    let startTime = num($("#longStartSec").value);
-    let startBeat = num($("#longStartBeat").value);
-    let duration = num($("#longDurSec").value);
-    let durationBeats = num($("#longDurBeats").value);
-
-    const hasDuration = duration > 0;
-    const hasDurationBeats = durationBeats > 0;
-
-    if (!hasDuration) {
-      const releaseFromStart = judgeTime - startTime;
-      if (isFinite(releaseFromStart) && releaseFromStart > 0) {
-        duration = releaseFromStart;
-      }
-    }
-    if (!hasDurationBeats) {
-      const releaseBeatDiff = judgeBeat - startBeat;
-      if (isFinite(releaseBeatDiff) && releaseBeatDiff > 0) {
-        durationBeats = releaseBeatDiff;
-      }
-    }
+    let duration = Math.max(0, num($("#longDurSec").value));
+    let durationBeats = Math.max(0, num($("#longDurBeats").value));
 
     if (duration <= 0 && durationBeats > 0) {
       duration = beatsToSec(durationBeats);
@@ -1892,23 +1872,16 @@ function addGrid(){
       if (spbVal > 0) durationBeats = duration / spbVal;
     }
 
-    if (startTime <= 0 && startBeat > 0) {
-      startTime = beatsToSec(startBeat);
-    }
-    if (startBeat <= 0 && startTime > 0) {
-      const spbVal = spb();
-      if (spbVal > 0) startBeat = startTime / spbVal;
-    }
+    const releaseTime = isFinite(judgeTime) ? judgeTime : 0;
+    const releaseBeat = isFinite(judgeBeat) ? judgeBeat : 0;
+    let startTime = releaseTime - duration;
+    let startBeat = releaseBeat - durationBeats;
 
-    // Release(판정) 시각이 비어 있으면 start+duration으로 채움
-    let releaseTime = judgeTime;
-    if (!isFinite(releaseTime) || releaseTime <= 0) {
-      releaseTime = startTime + Math.max(0, duration);
-    }
-    let releaseBeat = judgeBeat;
-    if (!isFinite(releaseBeat) || releaseBeat <= 0) {
-      releaseBeat = startBeat + Math.max(0, durationBeats);
-    }
+    if (!isFinite(startTime)) startTime = 0;
+    if (!isFinite(startBeat)) startBeat = 0;
+
+    startTime = Math.max(0, startTime);
+    startBeat = Math.max(0, startBeat);
 
     pushNote({
       type:"Long",
@@ -2025,8 +1998,6 @@ function startEdit(i){
     const startBeat = n.startBeat ?? 0;
     const durSec = n.duration ?? Math.max(0, (n.judgeTime ?? 0) - (n.startTime ?? 0));
     const durBeat = n.durationBeats ?? Math.max(0, (n.judgeBeat ?? 0) - (n.startBeat ?? 0));
-    $("#longStartSec").value = startSec ?? 0;
-    $("#longStartBeat").value = startBeat ?? 0;
     $("#longDurSec").value = durSec ?? 0;
     $("#longDurBeats").value = durBeat ?? 0;
     $("#judgeTimeSec").value = n.judgeTime ?? (startSec + durSec);
@@ -2131,10 +2102,8 @@ function saveEdit(){
     const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
     const c = parseInt(cs||"1"), r = parseInt(rs||"1");
 
-    let startTime = num($("#longStartSec").value);
-    let startBeat = num($("#longStartBeat").value);
-    let duration = num($("#longDurSec").value);
-    let durationBeats = num($("#longDurBeats").value);
+    let duration = Math.max(0, num($("#longDurSec").value));
+    let durationBeats = Math.max(0, num($("#longDurBeats").value));
     const judgeTime = num($("#judgeTimeSec").value);
     const judgeBeat = num($("#judgeBeat").value);
 
@@ -2144,25 +2113,16 @@ function saveEdit(){
       if (spbVal > 0) durationBeats = duration / spbVal;
     }
 
-    if (duration <= 0) {
-      const diff = judgeTime - startTime;
-      if (isFinite(diff) && diff > 0) duration = diff;
-    }
-    if (durationBeats <= 0) {
-      const diffB = judgeBeat - startBeat;
-      if (isFinite(diffB) && diffB > 0) durationBeats = diffB;
-    }
+    const releaseTime = isFinite(judgeTime) ? judgeTime : 0;
+    const releaseBeat = isFinite(judgeBeat) ? judgeBeat : 0;
+    let startTime = releaseTime - duration;
+    let startBeat = releaseBeat - durationBeats;
 
-    if (startTime <= 0 && startBeat > 0) startTime = beatsToSec(startBeat);
-    if (startBeat <= 0 && startTime > 0) {
-      const spbVal = spb();
-      if (spbVal > 0) startBeat = startTime / spbVal;
-    }
+    if (!isFinite(startTime)) startTime = 0;
+    if (!isFinite(startBeat)) startBeat = 0;
 
-    let releaseTime = judgeTime;
-    if (!isFinite(releaseTime) || releaseTime <= 0) releaseTime = startTime + Math.max(0, duration);
-    let releaseBeat = judgeBeat;
-    if (!isFinite(releaseBeat) || releaseBeat <= 0) releaseBeat = startBeat + Math.max(0, durationBeats);
+    startTime = Math.max(0, startTime);
+    startBeat = Math.max(0, startBeat);
 
     chart.notes[idx] = {
       ...prev,
@@ -2336,7 +2296,6 @@ function cancelEdit(reset=true){
   if(reset){
     $("#noteType").value="Grid"; $("#noteType").dispatchEvent(new Event("change"));
     $("#cellCR").value="1,1"; $("#judgeTimeSec").value="1.000"; $("#judgeBeat").value="1.000";
-    $("#longStartSec").value="0.000"; $("#longStartBeat").value="0.000";
     $("#longDurSec").value="1.000"; $("#longDurBeats").value="1.000";
     $("#circlePos").value="960,540"; $("#circleJudgeSec").value="1.000"; $("#circleJudgeBeat").value="1.000";
     $("#sliderStartSec").value="2.000"; $("#sliderStartBeat").value="2.000"; $("#sliderDurSec").value="0.800"; $("#sliderDurBeats").value="0.800";
