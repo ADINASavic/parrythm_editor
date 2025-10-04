@@ -24,7 +24,7 @@
   button.bad{background:#3a1616;border-color:#6e1c1c;color:#ffd2d2}
   button:disabled{opacity:.5;cursor:not-allowed}
   .grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:80px;gap:6px}
-  .cell{background:#0e1220;border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .cell{border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .cell.active{outline:2px solid var(--accent)}
   .canvasWrap{display:flex;gap:12px;flex-wrap:wrap}
   /* 캔버스는 반드시 클릭을 받는다 */
@@ -63,6 +63,8 @@
     <div class="row"><label>Type</label>
       <select id="noteType">
         <option value="Grid">Grid</option>
+        <option value="Trail">Trail</option>
+        <option value="Long">Long</option>
         <option value="CircleTap">CircleTap</option>
         <option value="Slider">Slider</option>
         <option value="Bullet">Bullet</option>
@@ -79,6 +81,11 @@
       <div class="row"><label>Cell (c,r)</label><input id="cellCR" type="text" value="1,1"></div>
       <div class="row"><label>Time (sec)</label><input id="judgeTimeSec" type="number" step="0.001" value="1.000"></div>
       <div class="row"><label>Time (beats)</label><input id="judgeBeat" type="number" step="0.001" value="1.000"></div>
+      <div id="longInputs" style="display:none">
+        <div class="hint">Longnote: 지속시간을 입력하면 홀드 길이가 결정됩니다.</div>
+        <div class="row"><label>Duration (sec)</label><input id="longDurSec" type="number" step="0.001" value="1.000"></div>
+        <div class="row"><label>Duration (beats)</label><input id="longDurBeats" type="number" step="0.001" value="1.000"></div>
+      </div>
       <button id="btnAddGrid" class="primary" onclick="addGrid()">Add Grid</button>
     </div>
 
@@ -490,7 +497,7 @@ const STYLE_TYPE = "Line";
 
 const WAVE_ROW_H   = 18; // 서브레인 한 칸 높이
 const WAVE_ROW_GAP = 4;
-const WAVE_TYPES = ["Grid","CircleTap","Slider","Bullet","Camera","Line","Voice","Image"];
+const WAVE_TYPES = ["Grid","Long","CircleTap","Slider","Bullet","Camera","Line","Voice","Image"];
 let waveBlocks = [];     // [{x,y,w,h, idx, type, row, t0,t1}]
 
 const GRID_LEFT   = 648;
@@ -891,7 +898,8 @@ $("#startOffsetBeats").addEventListener("input", e=> { chart.startOffsetBeats = 
 
 $("#noteType").addEventListener("change", e=>{
   const t = e.target.value;
-  $("#gridInputs").style.display   = (t==="Grid") ? "block":"none";
+  const isGridFamily = (t==="Grid" || t==="Trail" || t==="Long");
+  $("#gridInputs").style.display   = isGridFamily ? "block":"none";
   $("#circleInputs").style.display = (t==="CircleTap") ? "block":"none";
   $("#sliderInputs").style.display = (t==="Slider") ? "block":"none";
   $("#bulletInputs").style.display = (t==="Bullet") ? "block":"none";
@@ -900,7 +908,18 @@ $("#noteType").addEventListener("change", e=>{
   $("#voiceInputs").style.display = (t==="Voice") ? "block" : "none";
   $("#imageInputs").style.display = (t==="Image") ? "block" : "none";
 
+  const longInputs = $("#longInputs");
+  if (longInputs) longInputs.style.display = (t==="Long") ? "block" : "none";
+
+  const gridBtn = $("#btnAddGrid");
+  if (gridBtn) {
+    if (t === "Trail") gridBtn.textContent = "Add Trail";
+    else if (t === "Long") gridBtn.textContent = "Add Longnote";
+    else gridBtn.textContent = "Add Grid";
+  }
+
   refreshAddButtons();
+  updateBulletStageLabel();
 });
 
 /* ---------- Grid UI ---------- */
@@ -1234,17 +1253,71 @@ function drawIngamePreview(nowSec){
   drawCameraBadges(nowSec);
   for (const n of chart.notes){
 
-    // --- GRID: 사각형, 서로 "중앙에서" 맞닿도록 모드 선택 ---
-    if (n.type === "Grid"){
+    const isTrail = (n.type === "Grid" && !!n.isTrail);
+    const isLongNote = (n.type === "Long") || (n.type === "Grid" && !!n.isLong);
+
+    // --- GRID & TRAIL ---
+    if (n.type === "Grid" && !isLongNote){
       const tJ = getNoteTimeSec(n), tS = tJ - gridLeadSec;
       if (nowSec < tS-0.2 || nowSec > tJ+0.2) continue;
 
       const pos  = cellToAbsPos(n.cell.x, n.cell.y);
       const size = clamp((nowSec - tS) * gridGrowSec, 0, gridTargetPx); // px
-      drawRectAbs(ctx, pos, size, "#6ee7b7", null, 3*s, 8);
-      drawRectAbs(ctx, pos, gridTargetPx, "rgba(110,231,183,0.35)", null, 1.5*s, 8);
+      const baseStroke = isTrail ? "#fbbf24" : "#6ee7b7";
+      const baseFill   = isTrail ? "rgba(251,191,36,0.24)" : "rgba(110,231,183,0.35)";
+      const hiStroke   = isTrail ? "#fcd34d" : "#66d9ef";
+      const hiFill     = isTrail ? "rgba(252,211,77,0.16)" : "rgba(102,217,239,0.10)";
+
+      drawRectAbs(ctx, pos, size, baseStroke, null, 3*s, 8);
+      drawRectAbs(ctx, pos, gridTargetPx, baseStroke, baseFill, 1.5*s, 8);
       if (Math.abs(nowSec - tJ) < 0.05){
-        drawRectAbs(ctx, pos, gridTargetPx*1.06, "#66d9ef", "rgba(102,217,239,0.1)", 3*s, 10);
+        drawRectAbs(ctx, pos, gridTargetPx*1.06, hiStroke, hiFill, 3*s, 10);
+      }
+    }
+
+    // --- LONG ---
+    else if (isLongNote){
+      const cell = n.cell || {x:1,y:1};
+      const pos = cellToAbsPos(cell.x, cell.y);
+      const tStart = getLongStartSec(n);
+      const tEnd   = getLongEndSec(n);
+      const tSpawn = tStart - gridLeadSec;
+      if (nowSec < tSpawn-0.2 || nowSec > tEnd+0.2) continue;
+
+      const baseStroke = "#6ee7b7";
+      const baseFill   = "rgba(110,231,183,0.25)";
+      const hiStroke   = "#66d9ef";
+      const hiFill     = "rgba(102,217,239,0.12)";
+
+      if (nowSec < tStart){
+        const size = clamp((nowSec - tSpawn) * gridGrowSec, 0, gridTargetPx);
+        drawRectAbs(ctx, pos, size, baseStroke, null, 3*s, 8);
+        drawRectAbs(ctx, pos, gridTargetPx, baseStroke, "rgba(110,231,183,0.18)", 1.5*s, 8);
+      } else {
+        drawRectAbs(ctx, pos, gridTargetPx, baseStroke, baseFill, 2.5*s, 8);
+
+        const span = Math.max(1e-6, tEnd - tStart);
+        const prog = clamp01((nowSec - tStart) / span);
+        const half = gridTargetPx * 0.5;
+        const blAbs = { x: pos.x - half, y: pos.y - half };
+        const trAbs = { x: pos.x + half, y: pos.y + half };
+        const bl = toCXabs(blAbs);
+        const tr = toCXabs(trAbs);
+        const x = Math.min(bl.x, tr.x);
+        const width = Math.abs(tr.x - bl.x);
+        const yBottom = Math.max(bl.y, tr.y);
+        const height = Math.abs(tr.y - bl.y);
+        const filled = height * prog;
+        if (width > 0 && height > 0){
+          ctx.save();
+          ctx.fillStyle = "rgba(110,231,183,0.35)";
+          ctx.fillRect(x, yBottom - filled, width, filled);
+          ctx.restore();
+        }
+
+        if (Math.abs(nowSec - tEnd) < 0.05){
+          drawRectAbs(ctx, pos, gridTargetPx*1.08, hiStroke, hiFill, 3*s, 10);
+        }
       }
     }
 
@@ -1374,6 +1447,11 @@ function getCameraDurSec(n){  // ← 호환용 별칭
 
 
 function noteTimeWindowSec(n){
+  if ((n.type === "Grid" && n.isLong) || n.type === "Long"){
+    const t0 = getLongStartSec(n);
+    const t1 = getLongEndSec(n);
+    return { t0, t1: Math.max(t0 + 0.02, t1) };
+  }
   if(n.type==="Camera"){
     const t0 = getCameraStartSec(n);
     const d  = Math.max(0, getCameraDurSec(n));
@@ -1424,7 +1502,7 @@ function drawNoteBlocks(){
   waveBlocks = [];
 
   // 타입 바스켓 준비
-  const typeList = (WAVE_TYPES && WAVE_TYPES.length) ? WAVE_TYPES : ["Grid","CircleTap","Slider","Bullet","Camera","Line","Voice","Image"];
+  const typeList = (WAVE_TYPES && WAVE_TYPES.length) ? WAVE_TYPES : ["Grid","Long","CircleTap","Slider","Bullet","Camera","Line","Voice","Image"];
   const allByType = Object.fromEntries(typeList.map(t => [t, []]));
 
   // 작은 헬퍼들
@@ -1444,7 +1522,8 @@ function drawNoteBlocks(){
 
   // 1) 수집
   (chart.notes || []).forEach((n, idx) => {
-    const t = n.type || "Grid";
+    const baseType = (n.type === "Grid" && n.isLong) ? "Long" : (n.type || "Grid");
+    const t = baseType;
 
     // Line = 점 이벤트
     if (t === STYLE_TYPE){
@@ -1523,12 +1602,19 @@ function drawNoteBlocks(){
       // 기본 팔레트
       let fill="rgba(102,217,239,0.18)", stroke="#66d9ef";
       if (t==="Grid"){       fill="rgba(110,231,183,0.20)"; stroke="#6ee7b7"; }
+      if (t==="Long"){       fill="rgba(110,231,183,0.28)"; stroke="#6ee7b7"; }
       if (t==="CircleTap"){  fill="rgba(66,180,255,0.20)";  stroke="#44aaff"; }
       if (t==="Slider"){     fill="rgba(102,217,239,0.22)"; stroke="#66d9ef"; }
       if (t==="Bullet"){     fill="rgba(251,191,36,0.24)";  stroke="#fbbf24"; }
       if (t==="Camera"){     fill="rgba(147,197,253,0.20)"; stroke="#93c5fd"; }
       if (t==="Voice"){      fill="rgba(196,181,253,0.22)"; stroke="#a78bfa"; } // purple
       if (t==="Image"){      fill="rgba(244,114,182,0.22)"; stroke="#f472b6"; } // pink
+
+      const noteRef = chart.notes?.[it.idx];
+      if (t==="Grid" && noteRef?.isTrail){
+        stroke = "#fbbf24";
+        fill   = "rgba(251,191,36,0.24)";
+      }
 
       // Line 색상 우선
       if (t===STYLE_TYPE && it.color){
@@ -1558,6 +1644,12 @@ function drawNoteBlocks(){
       const label = (() => {
         if (t===STYLE_TYPE) {
           return `#${it.idx+1} ${t}${it.color ? ` ${it.color}` : ""}`;
+        }
+        if (t==="Grid" && noteRef?.isTrail) {
+          return `#${it.idx+1} Trail`;
+        }
+        if (t==="Long") {
+          return `#${it.idx+1} Long`;
         }
         if (t==="Voice") {
           const ev = chart.notes?.[it.idx]?.fmodEvent || "";
@@ -1654,6 +1746,35 @@ function getSliderDurationSec(n){
   return isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0);
 }
 
+function getLongStartSec(n){
+  return chartTimeToPlaybackSec({ sec: n.startTime, beat: n.startBeat });
+}
+
+function getLongDurationSec(n){
+  const byBeats = ($("#timeMode").value === "Beats");
+  const durSec = isFinite(n.duration) ? n.duration : undefined;
+  const durBeatSec = isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : undefined;
+  let d;
+  if (byBeats) d = (durBeatSec != null && durBeatSec > 0) ? durBeatSec : durSec;
+  else d = (durSec != null && durSec > 0) ? durSec : durBeatSec;
+
+  if (!isFinite(d) || d <= 0){
+    const start = getLongStartSec(n);
+    const release = chartTimeToPlaybackSec({ sec: n.judgeTime, beat: n.judgeBeat });
+    const diff = release - start;
+    if (isFinite(diff) && diff > 0) d = diff; else d = 0;
+  }
+  return Math.max(0, d || 0);
+}
+
+function getLongEndSec(n){
+  const start = getLongStartSec(n);
+  const dur = getLongDurationSec(n);
+  if (dur > 0) return start + dur;
+  const release = chartTimeToPlaybackSec({ sec: n.judgeTime, beat: n.judgeBeat });
+  return Math.max(start, release);
+}
+
 // 불릿 구간도 동일하게 초로 환산
 function getBulletSpawnSec(n){
   return chartTimeToPlaybackSec({ sec: n.bulletSpawnTime, beat: n.bulletSpawnBeat });
@@ -1725,7 +1846,59 @@ function addGrid(){
   const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
   const c=parseInt(cs||"1"), r=parseInt(rs||"1");
   const judgeTime=num($("#judgeTimeSec").value), judgeBeat=num($("#judgeBeat").value);
-  pushNote({type:"Grid", cell:{x:c,y:r}, judgeTime, judgeBeat});
+  const noteType = $("#noteType").value;
+
+  if (noteType === "Trail") {
+    pushNote({
+      type:"Grid",
+      cell:{x:c,y:r},
+      judgeTime,
+      judgeBeat,
+      isTrail:true,
+      isLong:false
+    });
+    return;
+  }
+
+  if (noteType === "Long") {
+    let duration = Math.max(0, num($("#longDurSec").value));
+    let durationBeats = Math.max(0, num($("#longDurBeats").value));
+
+    if (duration <= 0 && durationBeats > 0) {
+      duration = beatsToSec(durationBeats);
+    }
+    if (durationBeats <= 0 && duration > 0) {
+      const spbVal = spb();
+      if (spbVal > 0) durationBeats = duration / spbVal;
+    }
+
+    const releaseTime = isFinite(judgeTime) ? judgeTime : 0;
+    const releaseBeat = isFinite(judgeBeat) ? judgeBeat : 0;
+    let startTime = releaseTime - duration;
+    let startBeat = releaseBeat - durationBeats;
+
+    if (!isFinite(startTime)) startTime = 0;
+    if (!isFinite(startBeat)) startBeat = 0;
+
+    startTime = Math.max(0, startTime);
+    startBeat = Math.max(0, startBeat);
+
+    pushNote({
+      type:"Long",
+      cell:{x:c,y:r},
+      startTime,
+      startBeat,
+      duration: Math.max(0, duration),
+      durationBeats: Math.max(0, durationBeats),
+      judgeTime: releaseTime,
+      judgeBeat: releaseBeat,
+      isLong:true,
+      isTrail:false
+    });
+    return;
+  }
+
+  pushNote({type:"Grid", cell:{x:c,y:r}, judgeTime, judgeBeat, isTrail:false, isLong:false});
 }
 function addCircle(){
   if(editIndex!==null) return;
@@ -1812,9 +1985,25 @@ function pushNote(obj){
 /* ---------- Edit ---------- */
 function startEdit(i){
   const n=chart.notes[i]; editIndex=i; editType=n.type;
-  $("#editLabel").textContent = `${n.type} #${i+1}`; $("#editBar").classList.add("active");
-  $("#noteType").value=n.type; $("#noteType").dispatchEvent(new Event("change"));
-  if(n.type==="Grid"){
+  const isTrail = (n.type === "Grid" && !!n.isTrail);
+  const isLong  = (n.type === "Long") || (!!n.isLong && n.type === "Grid");
+  const uiType  = isLong ? "Long" : (isTrail ? "Trail" : (n.type || "-"));
+  editType = uiType;
+  $("#editLabel").textContent = `${uiType} #${i+1}`; $("#editBar").classList.add("active");
+  $("#noteType").value = uiType; $("#noteType").dispatchEvent(new Event("change"));
+  if(isLong){
+    const cell = n.cell || {x:1,y:1};
+    selectedCell={c:cell.x,r:cell.y}; $("#cellCR").value=`${cell.x},${cell.y}`; refreshGridActive();
+    const startSec = n.startTime ?? 0;
+    const startBeat = n.startBeat ?? 0;
+    const durSec = n.duration ?? Math.max(0, (n.judgeTime ?? 0) - (n.startTime ?? 0));
+    const durBeat = n.durationBeats ?? Math.max(0, (n.judgeBeat ?? 0) - (n.startBeat ?? 0));
+    $("#longDurSec").value = durSec ?? 0;
+    $("#longDurBeats").value = durBeat ?? 0;
+    $("#judgeTimeSec").value = n.judgeTime ?? (startSec + durSec);
+    $("#judgeBeat").value = n.judgeBeat ?? (startBeat + durBeat);
+
+  }else if(n.type==="Grid"){
     selectedCell={c:n.cell.x,r:n.cell.y}; $("#cellCR").value=`${n.cell.x},${n.cell.y}`;
     $("#judgeTimeSec").value = n.judgeTime??0; $("#judgeBeat").value = n.judgeBeat??0; refreshGridActive();
   }else if(n.type==="CircleTap"){
@@ -1909,14 +2098,56 @@ function saveEdit(){
   const t   = editType;
   const prev = chart.notes[idx];
 
-  if (t === "Grid"){
+  if (t === "Long"){
+    const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
+    const c = parseInt(cs||"1"), r = parseInt(rs||"1");
+
+    let duration = Math.max(0, num($("#longDurSec").value));
+    let durationBeats = Math.max(0, num($("#longDurBeats").value));
+    const judgeTime = num($("#judgeTimeSec").value);
+    const judgeBeat = num($("#judgeBeat").value);
+
+    if (duration <= 0 && durationBeats > 0) duration = beatsToSec(durationBeats);
+    if (durationBeats <= 0 && duration > 0) {
+      const spbVal = spb();
+      if (spbVal > 0) durationBeats = duration / spbVal;
+    }
+
+    const releaseTime = isFinite(judgeTime) ? judgeTime : 0;
+    const releaseBeat = isFinite(judgeBeat) ? judgeBeat : 0;
+    let startTime = releaseTime - duration;
+    let startBeat = releaseBeat - durationBeats;
+
+    if (!isFinite(startTime)) startTime = 0;
+    if (!isFinite(startBeat)) startBeat = 0;
+
+    startTime = Math.max(0, startTime);
+    startBeat = Math.max(0, startBeat);
+
+    chart.notes[idx] = {
+      ...prev,
+      type: "Long",
+      cell: {x:c,y:r},
+      startTime,
+      startBeat,
+      duration: Math.max(0, duration),
+      durationBeats: Math.max(0, durationBeats),
+      judgeTime: releaseTime,
+      judgeBeat: releaseBeat,
+      isLong: true,
+      isTrail: false
+    };
+
+  } else if (t === "Grid" || t === "Trail"){
     const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
     const c = parseInt(cs||"1"), r = parseInt(rs||"1");
     chart.notes[idx] = {
       ...prev, type:"Grid",
       cell:{x:c,y:r},
       judgeTime:num($("#judgeTimeSec").value),
-      judgeBeat:num($("#judgeBeat").value)
+      judgeBeat:num($("#judgeBeat").value),
+      isTrail: (t === "Trail"),
+      isLong: false
     };
 
   } else if (t === "CircleTap"){
@@ -2065,6 +2296,7 @@ function cancelEdit(reset=true){
   if(reset){
     $("#noteType").value="Grid"; $("#noteType").dispatchEvent(new Event("change"));
     $("#cellCR").value="1,1"; $("#judgeTimeSec").value="1.000"; $("#judgeBeat").value="1.000";
+    $("#longDurSec").value="1.000"; $("#longDurBeats").value="1.000";
     $("#circlePos").value="960,540"; $("#circleJudgeSec").value="1.000"; $("#circleJudgeBeat").value="1.000";
     $("#sliderStartSec").value="2.000"; $("#sliderStartBeat").value="2.000"; $("#sliderDurSec").value="0.800"; $("#sliderDurBeats").value="0.800";
     clearPath(); circlePosAbs={x:REF_W/2,y:REF_H/2}; selectedCell={c:1,r:1}; refreshGridActive(); drawView();
@@ -2073,7 +2305,8 @@ function cancelEdit(reset=true){
 }
 function refreshAddButtons(){
   const editing=(editIndex!==null);
-  $("#btnAddGrid").disabled   = editing || $("#noteType").value!=="Grid";
+  const gridType = $("#noteType").value;
+  $("#btnAddGrid").disabled   = editing || !["Grid","Trail","Long"].includes(gridType);
   $("#btnAddCircle").disabled = editing || $("#noteType").value!=="CircleTap";
   $("#btnAddSlider").disabled = editing || $("#noteType").value!=="Slider";
   $("#btnAddBullet").disabled = editing || $("#noteType").value!=="Bullet";
@@ -2110,12 +2343,31 @@ function renderNotes(){
       const tr=document.createElement("tr"); tr.dataset.index=i; if(editIndex===i) tr.classList.add("editrow");
 
       const tdIdx=cel("td","muted",String(i+1));
-      const tdType=cel("td","","<span class=\"pill\">"+(n.type||"-")+"</span>",true);
+      const displayType = (()=>{
+        if ((n.type === "Grid" && n.isTrail)) return "Trail";
+        if ((n.type === "Grid" && n.isLong) || n.type === "Long") return "Long";
+        return n.type || "-";
+      })();
+      const tdType=cel("td","","<span class=\"pill\">"+displayType+"</span>",true);
 
       // ---- data 칸
       let data = "";
-      if (n.type==="Grid"){
+      if ((n.type==="Long") || (n.type==="Grid" && n.isLong)){
+        const cell = n.cell || {x:"-",y:"-"};
+        const startSec = n.startTime ?? 0;
+        const startBeat = n.startBeat ?? 0;
+        const durSec = (isFinite(n.duration) && n.duration>0)
+          ? n.duration
+          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (n.judgeTime ?? 0) - (n.startTime ?? 0)));
+        const durBeat = (isFinite(n.durationBeats) && n.durationBeats>0)
+          ? n.durationBeats
+          : (()=>{ const spbVal = spb(); return spbVal>0 ? (durSec / spbVal) : 0; })();
+        const relSec = n.judgeTime ?? (startSec + durSec);
+        const relBeat = n.judgeBeat ?? (startBeat + durBeat);
+        data=`cell=(${cell.x??"-"},${cell.y??"-"}) start=${fmt(startSec)}s/${fmt(startBeat)}b dur=${fmt(durSec)}s/${fmt(durBeat)}b release=${fmt(relSec)}s/${fmt(relBeat)}b`;
+      } else if (n.type==="Grid"){
         data=`cell=(${n.cell?.x??"-"},${n.cell?.y??"-"})`;
+        if (n.isTrail) data += " · Trail";
       } else if (n.type==="CircleTap"){
         const p = n.absPos || {x:REF_W/2,y:REF_H/2};
         data=`pos=(${Math.round(p.x)},${Math.round(p.y)})`;
@@ -2149,7 +2401,15 @@ function renderNotes(){
 
       // ---- time 칸 (★ 선언 먼저!)
       let timeTxt="";
-      if (n.type==="Slider"){
+      if ((n.type==="Long") || (n.type==="Grid" && n.isLong)){
+        const durSec = (isFinite(n.duration) && n.duration>0)
+          ? n.duration
+          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (n.judgeTime ?? 0) - (n.startTime ?? 0)));
+        const durBeat = (isFinite(n.durationBeats) && n.durationBeats>0)
+          ? n.durationBeats
+          : (()=>{ const spbVal = spb(); return spbVal>0 ? (durSec / spbVal) : 0; })();
+        timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(durSec)}/${fmt(durBeat)} | rel=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`;
+      } else if (n.type==="Slider"){
         timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
       } else if (n.type==="Bullet"){
         timeTxt=`start=${fmt(n.bulletSpawnTime)}/${fmt(n.bulletSpawnBeat)} | toDock=${fmt(n.bulletToDockDuration)}/${fmt(n.bulletToDockBeats)} | dockToDespawn=${fmt(n.bulletDockToDespawnDuration)}/${fmt(n.bulletDockToDespawnBeats)}`;
@@ -2210,6 +2470,9 @@ let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("dra
 /* ---------- 정렬 & 시간 계산 ---------- */
 function spb(){ const bpm = num($("#bpm").value); return bpm>0 ? 60/bpm : 0; }
 function getNoteTimeSec(n){
+  if ((n.type === "Grid" && n.isLong) || n.type === "Long"){
+    return getLongStartSec(n);
+  }
   switch (n.type) {
     case "Slider":
       return chartTimeToPlaybackSec({ sec: n.startTime,           beat: n.startBeat });
@@ -2272,6 +2535,11 @@ function getNoteTimeBeats(n){
     const sec = n.timeSec, beat = n.timeBeat;
     return byBeats ? pick(beat, beatsFromSec(sec)) : pick(beatsFromSec(sec), beat);
   }
+  if ((n.type === "Grid" && n.isLong) || n.type === "Long"){
+    const sec = n.startTime;
+    const beat = n.startBeat;
+    return byBeats ? pick(beat, beatsFromSec(sec)) : pick(beatsFromSec(sec), beat);
+  }
   if(n.type === "Slider"){
     const sec = n.startTime;
     const beat = n.startBeat;
@@ -2291,6 +2559,8 @@ function spawnSecOf(n){
   const gridGrowSec  = resolveGridGrowPxPerSec();       // px/s
   const gridLeadSec  = gridTargetPx / gridGrowSec;      // s
 
+  if ((n.type === "Grid" && n.isLong) || n.type === "Long")
+    return getLongStartSec(n) - gridLeadSec;
   if (n.type === "Grid")      return getNoteTimeSec(n) - gridLeadSec;
  if (n.type === "CircleTap") return getNoteTimeSec(n) - resolveCircleLeadSec();
  if (n.type === "Slider")    return getNoteTimeSec(n) - resolveSliderLeadSec();
