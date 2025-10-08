@@ -1872,26 +1872,18 @@ function addGrid(){
       if (spbVal > 0) durationBeats = duration / spbVal;
     }
 
-    const releaseTime = isFinite(judgeTime) ? judgeTime : 0;
-    const releaseBeat = isFinite(judgeBeat) ? judgeBeat : 0;
-    let startTime = releaseTime - duration;
-    let startBeat = releaseBeat - durationBeats;
-
-    if (!isFinite(startTime)) startTime = 0;
-    if (!isFinite(startBeat)) startBeat = 0;
-
-    startTime = Math.max(0, startTime);
-    startBeat = Math.max(0, startBeat);
+    const pressTime = isFinite(judgeTime) ? judgeTime : 0;
+    const pressBeat = isFinite(judgeBeat) ? judgeBeat : 0;
 
     pushNote({
       type:"Long",
       cell:{x:c,y:r},
-      startTime,
-      startBeat,
+      startTime: pressTime,
+      startBeat: pressBeat,
       duration: Math.max(0, duration),
       durationBeats: Math.max(0, durationBeats),
-      judgeTime: releaseTime,
-      judgeBeat: releaseBeat,
+      judgeTime: pressTime,
+      judgeBeat: pressBeat,
       isLong:true,
       isTrail:false
     });
@@ -2113,32 +2105,24 @@ function saveEdit(){
       if (spbVal > 0) durationBeats = duration / spbVal;
     }
 
-    const releaseTime = isFinite(judgeTime) ? judgeTime : 0;
-    const releaseBeat = isFinite(judgeBeat) ? judgeBeat : 0;
-    let startTime = releaseTime - duration;
-    let startBeat = releaseBeat - durationBeats;
-
-    if (!isFinite(startTime)) startTime = 0;
-    if (!isFinite(startBeat)) startBeat = 0;
-
-    startTime = Math.max(0, startTime);
-    startBeat = Math.max(0, startBeat);
+    const pressTime = isFinite(judgeTime) ? judgeTime : 0;
+    const pressBeat = isFinite(judgeBeat) ? judgeBeat : 0;
 
     chart.notes[idx] = {
       ...prev,
       type: "Long",
       cell: {x:c,y:r},
-      startTime,
-      startBeat,
+      startTime: pressTime,
+      startBeat: pressBeat,
       duration: Math.max(0, duration),
       durationBeats: Math.max(0, durationBeats),
-      judgeTime: releaseTime,
-      judgeBeat: releaseBeat,
+      judgeTime: pressTime,
+      judgeBeat: pressBeat,
       isLong: true,
       isTrail: false
     };
 
-  } else if (t === "Grid" || t === "Trail"){
+  } else if (t === "Grid" || t === "Trail"){ 
     const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
     const c = parseInt(cs||"1"), r = parseInt(rs||"1");
     chart.notes[idx] = {
@@ -2354,16 +2338,16 @@ function renderNotes(){
       let data = "";
       if ((n.type==="Long") || (n.type==="Grid" && n.isLong)){
         const cell = n.cell || {x:"-",y:"-"};
-        const startSec = n.startTime ?? 0;
-        const startBeat = n.startBeat ?? 0;
+        const startSec = isFinite(n.startTime) ? n.startTime : (isFinite(n.judgeTime) ? n.judgeTime : 0);
+        const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.judgeBeat) ? n.judgeBeat : 0);
         const durSec = (isFinite(n.duration) && n.duration>0)
           ? n.duration
-          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (n.judgeTime ?? 0) - (n.startTime ?? 0)));
+          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (isFinite(n.judgeTime) ? n.judgeTime : startSec) - startSec));
         const durBeat = (isFinite(n.durationBeats) && n.durationBeats>0)
           ? n.durationBeats
-          : (()=>{ const spbVal = spb(); return spbVal>0 ? (durSec / spbVal) : 0; })();
-        const relSec = n.judgeTime ?? (startSec + durSec);
-        const relBeat = n.judgeBeat ?? (startBeat + durBeat);
+          : (()=>{ const spbVal = spb(); return (spbVal>0 && durSec>0) ? (durSec / spbVal) : Math.max(0, (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat) - startBeat); })();
+        const relSec = (durSec>0) ? (startSec + durSec) : (isFinite(n.judgeTime) ? n.judgeTime : startSec);
+        const relBeat = (durBeat>0) ? (startBeat + durBeat) : (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat);
         data=`cell=(${cell.x??"-"},${cell.y??"-"}) start=${fmt(startSec)}s/${fmt(startBeat)}b dur=${fmt(durSec)}s/${fmt(durBeat)}b release=${fmt(relSec)}s/${fmt(relBeat)}b`;
       } else if (n.type==="Grid"){
         data=`cell=(${n.cell?.x??"-"},${n.cell?.y??"-"})`;
@@ -2402,13 +2386,17 @@ function renderNotes(){
       // ---- time 칸 (★ 선언 먼저!)
       let timeTxt="";
       if ((n.type==="Long") || (n.type==="Grid" && n.isLong)){
+        const startSec = isFinite(n.startTime) ? n.startTime : (isFinite(n.judgeTime) ? n.judgeTime : 0);
+        const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.judgeBeat) ? n.judgeBeat : 0);
         const durSec = (isFinite(n.duration) && n.duration>0)
           ? n.duration
-          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (n.judgeTime ?? 0) - (n.startTime ?? 0)));
+          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (isFinite(n.judgeTime) ? n.judgeTime : startSec) - startSec));
         const durBeat = (isFinite(n.durationBeats) && n.durationBeats>0)
           ? n.durationBeats
-          : (()=>{ const spbVal = spb(); return spbVal>0 ? (durSec / spbVal) : 0; })();
-        timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(durSec)}/${fmt(durBeat)} | rel=${fmt(n.judgeTime)}/${fmt(n.judgeBeat)}`;
+          : (()=>{ const spbVal = spb(); return (spbVal>0 && durSec>0) ? (durSec / spbVal) : Math.max(0, (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat) - startBeat); })();
+        const relSec = (durSec>0) ? (startSec + durSec) : (isFinite(n.judgeTime) ? n.judgeTime : startSec);
+        const relBeat = (durBeat>0) ? (startBeat + durBeat) : (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat);
+        timeTxt=`start=${fmt(startSec)}/${fmt(startBeat)} | dur=${fmt(durSec)}/${fmt(durBeat)} | rel=${fmt(relSec)}/${fmt(relBeat)}`;
       } else if (n.type==="Slider"){
         timeTxt=`start=${fmt(n.startTime)}/${fmt(n.startBeat)} | dur=${fmt(n.duration)}/${fmt(n.durationBeats)}`;
       } else if (n.type==="Bullet"){
@@ -3944,12 +3932,3 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
