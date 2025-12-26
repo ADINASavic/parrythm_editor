@@ -1076,6 +1076,100 @@ function onViewPointerDown(e){
   }
 }
 
+function distAbs(a, b){
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function drawBulletPathPreview(ctx){
+  if ($("#noteType").value !== "Bullet") return;
+
+  const S = parseAbsXY($("#bulletSpawn")?.value,   null);
+  const D = parseAbsXY($("#bulletDock")?.value,    null);
+  const E = parseAbsXY($("#bulletDespawn")?.value, null);
+
+  const stage = bulletStage;
+
+  const ACTIVE   = "rgba(255,180,80,0.85)";
+  const INACTIVE = "rgba(255,180,80,0.25)";
+  const PREVIEW  = "rgba(255,210,140,0.65)";
+
+  // ── 확정된 경로 ──────────────────
+  if (S && D){
+    drawLineAbs(ctx, S, D,
+      stage >= 1 ? ACTIVE : INACTIVE,
+      stage >= 1 ? 3 : 1.5,
+      stage >= 1 ? [] : [6,6]
+    );
+  }
+
+  if (D && E){
+    drawLineAbs(ctx, D, E,
+      stage >= 2 ? ACTIVE : INACTIVE,
+      stage >= 2 ? 3 : 1.5,
+      stage >= 2 ? [] : [6,6]
+    );
+  }
+
+  // ── 마우스 프리뷰 (아직 안 찍은 단계) ──
+  if (stage === 1 && S){
+    drawLineAbs(ctx, S, mouseAbs, PREVIEW, 2, [4,4]);
+  }
+  if (stage === 2 && D){
+    drawLineAbs(ctx, D, mouseAbs, PREVIEW, 2, [4,4]);
+  }
+
+  // ── 포인트 표시 ──────────────────
+  if (S){
+    drawCircleAbs(ctx, S, 6,
+      stage === 0 ? "#67e8f9" : "#6ee7b7",
+      "rgba(110,231,183,0.15)", 2
+    );
+    if (stage === 0)
+      drawCircleAbs(ctx, S, 10, "rgba(103,232,249,0.9)", null, 2);
+  }
+
+  if (D){
+    drawCircleAbs(ctx, D, 6,
+      stage === 1 ? "#67e8f9" : "#facc15",
+      "rgba(250,204,21,0.15)", 2
+    );
+    if (stage === 1)
+      drawCircleAbs(ctx, D, 10, "rgba(103,232,249,0.9)", null, 2);
+  }
+
+  if (E){
+    drawCircleAbs(ctx, E, 6,
+      stage === 2 ? "#67e8f9" : "#f87171",
+      "rgba(248,113,113,0.15)", 2
+    );
+    if (stage === 2)
+      drawCircleAbs(ctx, E, 10, "rgba(103,232,249,0.9)", null, 2);
+  }
+
+  // ── 단계 안내 텍스트 ───────────────
+  const STAGE_TEXT = [
+    "Spawn 위치 클릭",
+    "Dock 위치 클릭",
+    "Despawn 위치 클릭"
+  ];
+
+  ctx.fillStyle = "#e5e7eb";
+  ctx.font = "14px monospace";
+  ctx.fillText(`Bullet 생성: ${STAGE_TEXT[stage]}`, 16, 24);
+
+  // ── 경고 ─────────────────────────
+  ctx.fillStyle = "#f87171";
+
+  if (S && E && distAbs(S, E) < 20){
+    ctx.fillText("⚠ Spawn과 Despawn이 너무 가까움", 16, 44);
+  }
+  if (S && D && distAbs(S, D) < 12){
+    ctx.fillText("⚠ Spawn–Dock 거리 너무 짧음", 16, 60);
+  }
+  if (D && E && distAbs(D, E) < 12){
+    ctx.fillText("⚠ Dock–Despawn 거리 너무 짧음", 16, 76);
+  }
+}
 
 
 function drawView(){
@@ -1097,6 +1191,76 @@ function drawView(){
     for(let i=1;i<pathPtsAbs.length;i++){ const p=toCXabs(pathPtsAbs[i]); ctx.lineTo(p.x,p.y); }
     ctx.stroke();
   }
+    // bullet path (editing preview)
+// bullet path (editing preview)
+if ($("#noteType").value === "Bullet"){
+  const S = parseAbsXY($("#bulletSpawn")?.value, null);
+  const D = parseAbsXY($("#bulletDock")?.value, null);
+  const E = parseAbsXY($("#bulletDespawn")?.value, null);
+
+  const three = $("#bullet3Click")?.checked;
+  const stage = three
+    ? bulletStage
+    : ({"spawn":0,"dock":1,"despawn":2}[$("#bulletClickTarget")?.value] ?? 0);
+
+  const ACTIVE   = "rgba(255,180,80,0.85)";
+  const INACTIVE = "rgba(255,180,80,0.25)";
+  const PREVIEW  = "rgba(255,210,140,0.6)";
+
+  // ── 확정 경로 ──
+  if (S && D){
+    drawLineAbs(ctx, S, D,
+      stage >= 1 ? ACTIVE : INACTIVE,
+      stage >= 1 ? 3 : 1.5,
+      stage >= 1 ? [] : [6,6]
+    );
+  }
+  if (D && E){
+    drawLineAbs(ctx, D, E,
+      stage >= 2 ? ACTIVE : INACTIVE,
+      stage >= 2 ? 3 : 1.5,
+      stage >= 2 ? [] : [6,6]
+    );
+  }
+
+  // ── 마우스 프리뷰 ──
+  if (stage === 1 && S){
+    drawLineAbs(ctx, S, mouseAbs, PREVIEW, 2, [4,4]);
+  }
+  if (stage === 2 && D){
+    drawLineAbs(ctx, D, mouseAbs, PREVIEW, 2, [4,4]);
+  }
+
+  // ── 포인트 ──
+  if (S){
+    drawCircleAbs(ctx, S, 6,
+      stage===0 ? "#66d9ef" : "#6ee7b7",
+      "rgba(110,231,183,0.15)", 2
+    );
+    if (stage===0) drawCircleAbs(ctx, S, 10, "rgba(102,217,239,0.85)", null, 2);
+  }
+  if (D){
+    drawCircleAbs(ctx, D, 6,
+      stage===1 ? "#66d9ef" : "#fbbf24",
+      "rgba(251,191,36,0.15)", 2
+    );
+    if (stage===1) drawCircleAbs(ctx, D, 10, "rgba(102,217,239,0.85)", null, 2);
+  }
+  if (E){
+    drawCircleAbs(ctx, E, 6,
+      stage===2 ? "#66d9ef" : "#f87171",
+      "rgba(248,113,113,0.15)", 2
+    );
+    if (stage===2) drawCircleAbs(ctx, E, 10, "rgba(102,217,239,0.85)", null, 2);
+  }
+
+  // ── 단계 텍스트 ──
+  const STAGE_TEXT = ["Spawn 클릭", "Dock 클릭", "Despawn 클릭"];
+  ctx.fillStyle="#e5e7eb";
+  ctx.font="14px monospace";
+  ctx.fillText(`Bullet 생성: ${STAGE_TEXT[stage]}`, ar.x+8, ar.y+20);
+}
+
 
   // [ADD] 인게임 “지금만” 시뮬 미리보기
   drawIngamePreview(getPreviewNowSec());
@@ -3932,3 +4096,4 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
