@@ -105,6 +105,11 @@
       <div class="row"><label>Start (beats)</label><input id="sliderStartBeat" type="number" step="0.001" value="2.000"></div>
       <div class="row"><label>Duration (sec)</label><input id="sliderDurSec" type="number" step="0.001" value="0.800"></div>
       <div class="row"><label>Duration (beats)</label><input id="sliderDurBeats" type="number" step="0.001" value="0.800"></div>
+      <label class="mini">
+  <input id="sliderCurved" type="checkbox">
+  Curve (Bezier)
+</label>
+
       <div class="row two">
         <div><label>Point Index</label><input id="ptIndex" type="number" value="0" step="1"></div>
         <div><label>Point (x,y)</label><input id="ptXY" type="text" value="960,540"></div>
@@ -152,6 +157,10 @@
         </select>
       </div>
       <div class="row">
+        <label class="mini">
+    <input id="bulletCurved" type="checkbox">
+    Curve (Bezier)
+  </label>
         <label class="mini">
           <input id="bullet3Click" type="checkbox" checked>
           3-Click 배치 (Spawn→Dock→Despawn)
@@ -513,6 +522,21 @@ const $ = s => document.querySelector(s);
 /* ---------- 절대좌표 기준 ---------- */
 const REF_W = 1920;
 const REF_H = 1080;
+// ====== [FIX] missing globals ======
+let mouseAbs = { x: REF_W/2, y: REF_H/2 };
+
+// canvas hover -> mouseAbs 갱신
+view.addEventListener("pointermove", (e)=>{
+  const rect = view.getBoundingClientRect();
+  const sx = rect.width  ? (view.width  / rect.width)  : 1;
+  const sy = rect.height ? (view.height / rect.height) : 1;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top)  * sy;
+
+  const ar = getAR();
+  if (mx < ar.x || mx > ar.x + ar.w || my < ar.y || my > ar.y + ar.h) return;
+  mouseAbs = fromCXabs(mx, my);
+}, {passive:true});
 
 let styleRuntime = {
   currentColor: rgba(255,255,255,255),
@@ -685,14 +709,14 @@ function getStyleStartSec(n){
 
 // Enter 및 Ctrl+Enter로도 추가(키보드만으로 가능)
 window.addEventListener('keydown', (e)=>{
-  // 폼 내부에서 Enter → 추가
   if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
     const a = document.activeElement;
-    if (a && a.closest && a.closest('#stylePanel')) {
+    if (a && a.closest && a.closest('#styleInputs')) {
       e.preventDefault();
       addStyleEventFromUI();
     }
   }
+
   // 어디서든 Ctrl/Cmd+Enter → 추가
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
@@ -769,26 +793,7 @@ function buildStyleSchedule(){
 
 let nextStyleIdx = 0;        // 이미 있으면 유지
 let _lastStyleNow = -1;
-function evalStyleColorAt(t){
-  let c = _styleBaseColor;
-  for (const ev of styleEvents){
-    if (ev.tSec > t) break;
-    const to   = parseHexColor(ev.color);
-    const dur  = Math.max(0, ev.fadeSec || 0);
-    const t0   = ev.tSec;
-    const t1   = t0 + dur;
 
-    if (dur <= 1e-9 || t >= t1){
-      // 페이드 완료(또는 즉시 변경): 목표색으로 스냅
-      c = to;
-    } else if (t >= t0){
-      // 페이드 중: c → to 선형 보간
-      const u = (t - t0) / dur;
-      c = rgbaLerp(c, to, clamp01(u));
-    }
-  }
-  return c;
-}
 
 const HEX = "0123456789abcdef";
 const to2hex = (n) => {
@@ -1079,97 +1084,139 @@ function onViewPointerDown(e){
 function distAbs(a, b){
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
+// =======================
+// Catmull-Rom (Unity와 동일한 클램프 방식)
+// =======================
+function catmullRom(p0, p1, p2, p3, t){
+  const t2 = t*t;
+  const t3 = t2*t;
+  return {
+    x: 0.5 * ((2*p1.x) + (-p0.x + p2.x)*t + (2*p0.x - 5*p1.x + 4*p2.x - p3.x)*t2 + (-p0.x + 3*p1.x - 3*p2.x + p3.x)*t3),
+    y: 0.5 * ((2*p1.y) + (-p0.y + p2.y)*t + (2*p0.y - 5*p1.y + 4*p2.y - p3.y)*t2 + (-p0.y + 3*p1.y - 3*p2.y + p3.y)*t3)
+  };
+}
+
+// ptsAbs: [{x,y}, ...]  (ABS 1920x1080)
+// return: 샘플링된 polyline points (ABS)
+function sampleCatmullPathAbs(ptsAbs, stepsPerSeg = 16){
+  if (!ptsAbs || ptsAbs.length === 0) return [];
+  if (ptsAbs.length === 1) return [{ x: ptsAbs[0].x, y: ptsAbs[0].y }];
+  if (ptsAbs.length === 2) return [{ x: ptsAbs[0].x, y: ptsAbs[0].y }, { x: ptsAbs[1].x, y: ptsAbs[1].y }];
+
+  const out = [];
+  out.push({ x: ptsAbs[0].x, y: ptsAbs[0].y });
+
+  const n = ptsAbs.length;
+  for (let i = 0; i < n - 1; i++){
+    const p0 = ptsAbs[Math.max(0, i - 1)];
+    const p1 = ptsAbs[i];
+    const p2 = ptsAbs[i + 1];
+    const p3 = ptsAbs[Math.min(n - 1, i + 2)];
+
+    for (let s = 1; s <= stepsPerSeg; s++){
+      const t = s / stepsPerSeg;
+      out.push(catmullRom(p0, p1, p2, p3, t));
+    }
+  }
+  return out;
+}
+
+function drawPolylineAbs(ctx, ptsAbs, stroke, lineW, dash){
+  if (!ptsAbs || ptsAbs.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = lineW;
+  ctx.setLineDash(dash || []);
+  const p0 = toCXabs(ptsAbs[0]);
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  for (let i = 1; i < ptsAbs.length; i++){
+    const p = toCXabs(ptsAbs[i]);
+    ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// curved=true면 (pts>=3) Catmull 샘플링, 아니면 원본 polyline
+function drawPathAbs(ctx, ptsAbs, curved, stroke, lineW, dash, stepsPerSeg = 16){
+  const pts = (curved && ptsAbs && ptsAbs.length >= 3)
+    ? sampleCatmullPathAbs(ptsAbs, stepsPerSeg)
+    : ptsAbs;
+  drawPolylineAbs(ctx, pts, stroke, lineW, dash);
+  return pts; // (필요하면 길이 계산 등에 재사용)
+}
+
 
 function drawBulletPathPreview(ctx){
   if ($("#noteType").value !== "Bullet") return;
+
+  const three = $("#bullet3Click")?.checked === true;
+  const curved = $("#bulletCurved")?.checked === true;
 
   const S = parseAbsXY($("#bulletSpawn")?.value,   null);
   const D = parseAbsXY($("#bulletDock")?.value,    null);
   const E = parseAbsXY($("#bulletDespawn")?.value, null);
 
-  const stage = bulletStage;
+  // 3-click이면 bulletStage를 따르고, 아니면 dropdown 타겟 기준으로 stage 계산
+  const stage = three
+    ? bulletStage
+    : ({"spawn":0,"dock":1,"despawn":2}[$("#bulletClickTarget")?.value] ?? 0);
 
   const ACTIVE   = "rgba(255,180,80,0.85)";
   const INACTIVE = "rgba(255,180,80,0.25)";
   const PREVIEW  = "rgba(255,210,140,0.65)";
 
-  // ── 확정된 경로 ──────────────────
-  if (S && D){
-    drawLineAbs(ctx, S, D,
-      stage >= 1 ? ACTIVE : INACTIVE,
-      stage >= 1 ? 3 : 1.5,
-      stage >= 1 ? [] : [6,6]
-    );
+  // ---- 확정 경로 ----
+  // stage==0: Spawn만 찍는 단계 (아직 선 없음)
+  // stage==1: S,D 확정 (S->D 선)
+  // stage==2: S,D 확정 + E 찍기 직전/혹은 확정 (3점 경로)
+  if (stage >= 1 && S && D){
+    // 2점만으로는 Catmull 의미 없으니 그냥 직선
+    drawPathAbs(ctx, [S, D], false, ACTIVE, 3, [], 16);
   }
 
-  if (D && E){
-    drawLineAbs(ctx, D, E,
-      stage >= 2 ? ACTIVE : INACTIVE,
-      stage >= 2 ? 3 : 1.5,
-      stage >= 2 ? [] : [6,6]
-    );
+  if (stage >= 2 && S && D && E){
+    // 3점이면 curved 토글에 따라 Catmull/Polyline
+    drawPathAbs(ctx, [S, D, E], curved, ACTIVE, 3, [], 16);
   }
 
-  // ── 마우스 프리뷰 (아직 안 찍은 단계) ──
+  // ---- 마우스 프리뷰 ----
+  // stage==1: S->mouse (직선)
   if (stage === 1 && S){
-    drawLineAbs(ctx, S, mouseAbs, PREVIEW, 2, [4,4]);
+    drawPathAbs(ctx, [S, mouseAbs], false, PREVIEW, 2, [4,4], 16);
   }
-  if (stage === 2 && D){
-    drawLineAbs(ctx, D, mouseAbs, PREVIEW, 2, [4,4]);
+  // stage==2: S->D->mouse (curved면 Catmull)
+  if (stage === 2 && S && D){
+    drawPathAbs(ctx, [S, D, mouseAbs], curved, PREVIEW, 2, [4,4], 16);
   }
 
-  // ── 포인트 표시 ──────────────────
+  // ---- 포인트 표시 ----
   if (S){
-    drawCircleAbs(ctx, S, 6,
-      stage === 0 ? "#67e8f9" : "#6ee7b7",
-      "rgba(110,231,183,0.15)", 2
-    );
-    if (stage === 0)
-      drawCircleAbs(ctx, S, 10, "rgba(103,232,249,0.9)", null, 2);
+    drawCircleAbs(ctx, S, 6, stage===0 ? "#67e8f9" : "#6ee7b7", "rgba(110,231,183,0.15)", 2);
+    if (stage===0) drawCircleAbs(ctx, S, 10, "rgba(103,232,249,0.9)", null, 2);
   }
-
   if (D){
-    drawCircleAbs(ctx, D, 6,
-      stage === 1 ? "#67e8f9" : "#facc15",
-      "rgba(250,204,21,0.15)", 2
-    );
-    if (stage === 1)
-      drawCircleAbs(ctx, D, 10, "rgba(103,232,249,0.9)", null, 2);
+    drawCircleAbs(ctx, D, 6, stage===1 ? "#67e8f9" : "#facc15", "rgba(250,204,21,0.15)", 2);
+    if (stage===1) drawCircleAbs(ctx, D, 10, "rgba(103,232,249,0.9)", null, 2);
   }
-
   if (E){
-    drawCircleAbs(ctx, E, 6,
-      stage === 2 ? "#67e8f9" : "#f87171",
-      "rgba(248,113,113,0.15)", 2
-    );
-    if (stage === 2)
-      drawCircleAbs(ctx, E, 10, "rgba(103,232,249,0.9)", null, 2);
+    drawCircleAbs(ctx, E, 6, stage===2 ? "#67e8f9" : "#f87171", "rgba(248,113,113,0.15)", 2);
+    if (stage===2) drawCircleAbs(ctx, E, 10, "rgba(103,232,249,0.9)", null, 2);
   }
 
-  // ── 단계 안내 텍스트 ───────────────
-  const STAGE_TEXT = [
-    "Spawn 위치 클릭",
-    "Dock 위치 클릭",
-    "Despawn 위치 클릭"
-  ];
-
+  // ---- 안내 텍스트 / 경고 (기존 로직 유지) ----
+  const STAGE_TEXT = ["Spawn 위치 클릭","Dock 위치 클릭","Despawn 위치 클릭"];
   ctx.fillStyle = "#e5e7eb";
   ctx.font = "14px monospace";
   ctx.fillText(`Bullet 생성: ${STAGE_TEXT[stage]}`, 16, 24);
 
-  // ── 경고 ─────────────────────────
   ctx.fillStyle = "#f87171";
-
-  if (S && E && distAbs(S, E) < 20){
-    ctx.fillText("⚠ Spawn과 Despawn이 너무 가까움", 16, 44);
-  }
-  if (S && D && distAbs(S, D) < 12){
-    ctx.fillText("⚠ Spawn–Dock 거리 너무 짧음", 16, 60);
-  }
-  if (D && E && distAbs(D, E) < 12){
-    ctx.fillText("⚠ Dock–Despawn 거리 너무 짧음", 16, 76);
-  }
+  if (S && E && distAbs(S, E) < 20) ctx.fillText("⚠ Spawn과 Despawn이 너무 가까움", 16, 44);
+  if (S && D && distAbs(S, D) < 12) ctx.fillText("⚠ Spawn–Dock 거리 너무 짧음", 16, 60);
+  if (D && E && distAbs(D, E) < 12) ctx.fillText("⚠ Dock–Despawn 거리 너무 짧음", 16, 76);
 }
+
 
 
 function drawView(){
@@ -1184,91 +1231,34 @@ function drawView(){
     ctx.beginPath();ctx.moveTo(x,ar.y);ctx.lineTo(x,ar.y+ar.h);ctx.stroke();
     ctx.beginPath();ctx.moveTo(ar.x,y);ctx.lineTo(ar.x+ar.w,y);ctx.stroke();
   }
-  // slider path (editing preview)
-  if(pathPtsAbs.length){
-    ctx.strokeStyle="#6ee7b7"; ctx.lineWidth=2; ctx.beginPath();
-    let p0=toCXabs(pathPtsAbs[0]); ctx.moveTo(p0.x,p0.y);
-    for(let i=1;i<pathPtsAbs.length;i++){ const p=toCXabs(pathPtsAbs[i]); ctx.lineTo(p.x,p.y); }
-    ctx.stroke();
-  }
-    // bullet path (editing preview)
-// bullet path (editing preview)
-if ($("#noteType").value === "Bullet"){
-  const S = parseAbsXY($("#bulletSpawn")?.value, null);
-  const D = parseAbsXY($("#bulletDock")?.value, null);
-  const E = parseAbsXY($("#bulletDespawn")?.value, null);
-
-  const three = $("#bullet3Click")?.checked;
-  const stage = three
-    ? bulletStage
-    : ({"spawn":0,"dock":1,"despawn":2}[$("#bulletClickTarget")?.value] ?? 0);
-
-  const ACTIVE   = "rgba(255,180,80,0.85)";
-  const INACTIVE = "rgba(255,180,80,0.25)";
-  const PREVIEW  = "rgba(255,210,140,0.6)";
-
-  // ── 확정 경로 ──
-  if (S && D){
-    drawLineAbs(ctx, S, D,
-      stage >= 1 ? ACTIVE : INACTIVE,
-      stage >= 1 ? 3 : 1.5,
-      stage >= 1 ? [] : [6,6]
-    );
-  }
-  if (D && E){
-    drawLineAbs(ctx, D, E,
-      stage >= 2 ? ACTIVE : INACTIVE,
-      stage >= 2 ? 3 : 1.5,
-      stage >= 2 ? [] : [6,6]
-    );
-  }
-
-  // ── 마우스 프리뷰 ──
-  if (stage === 1 && S){
-    drawLineAbs(ctx, S, mouseAbs, PREVIEW, 2, [4,4]);
-  }
-  if (stage === 2 && D){
-    drawLineAbs(ctx, D, mouseAbs, PREVIEW, 2, [4,4]);
-  }
-
-  // ── 포인트 ──
-  if (S){
-    drawCircleAbs(ctx, S, 6,
-      stage===0 ? "#66d9ef" : "#6ee7b7",
-      "rgba(110,231,183,0.15)", 2
-    );
-    if (stage===0) drawCircleAbs(ctx, S, 10, "rgba(102,217,239,0.85)", null, 2);
-  }
-  if (D){
-    drawCircleAbs(ctx, D, 6,
-      stage===1 ? "#66d9ef" : "#fbbf24",
-      "rgba(251,191,36,0.15)", 2
-    );
-    if (stage===1) drawCircleAbs(ctx, D, 10, "rgba(102,217,239,0.85)", null, 2);
-  }
-  if (E){
-    drawCircleAbs(ctx, E, 6,
-      stage===2 ? "#66d9ef" : "#f87171",
-      "rgba(248,113,113,0.15)", 2
-    );
-    if (stage===2) drawCircleAbs(ctx, E, 10, "rgba(102,217,239,0.85)", null, 2);
-  }
-
-  // ── 단계 텍스트 ──
-  const STAGE_TEXT = ["Spawn 클릭", "Dock 클릭", "Despawn 클릭"];
-  ctx.fillStyle="#e5e7eb";
-  ctx.font="14px monospace";
-  ctx.fillText(`Bullet 생성: ${STAGE_TEXT[stage]}`, ar.x+8, ar.y+20);
-}
 
 
-  // [ADD] 인게임 “지금만” 시뮬 미리보기
-  drawIngamePreview(getPreviewNowSec());
-  drawCameraFrame(getPreviewNowSec());
-  drawGridOverlay();
-}
+
+  // slider path (editing preview)  [polyline OR catmull]
+  if (pathPtsAbs.length >= 2) {
+    const curved = $("#sliderCurved")?.checked === true;
+    drawPathAbs(ctx, pathPtsAbs, curved, "#6ee7b7", 2, [], 16);
+  }
+
+
+
 
 /* ---------- [ADD] Ingame Preview helpers ---------- */
+
+  // 인게임 “지금만” 시뮬 미리보기
+  const now = getPreviewNowSec();
+  drawIngamePreview(now);
+  drawCameraFrame(now);
+  drawGridOverlay();
+
+  // bullet edit overlay(현재는 drawBulletPathPreview로 통합됐지만, 호출해도 무해)
+  drawBulletEditPreview();
+
+
+}
+function drawBulletEditPreview(){
+  drawBulletPathPreview(ctx);
+}
 function lerp(a,b,t){ return a + (b - a) * t; }
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 function within(t,a,b,pad=0){ return t >= (a - pad) && t <= (b + pad); }
@@ -1503,8 +1493,14 @@ function drawIngamePreview(nowSec){
 
     // --- SLIDER: 리드 동안 헤드 고정 → 시작 이후 진행, 헤드 크기 = Circle과 동일 ---
     else if (n.type === "Slider"){
-      const pts = n.absPath || [];
-      if (pts.length < 2) continue;
+      const basePts = n.absPath || [];
+      if (basePts.length < 2) continue;
+
+      const curved = !!n.sliderCurved;
+      const pts = (curved && basePts.length >= 3)
+        ? sampleCatmullPathAbs(basePts, 16)
+        : basePts;
+
 
       const durSec = getSliderDurationSec(n);
       const tStart = getSliderStartSec(n);
@@ -1512,11 +1508,8 @@ function drawIngamePreview(nowSec){
       const tSpawn = tStart - sliderLeadSec;
       if (nowSec < tSpawn-0.2 || nowSec > tEnd+0.2) continue;
 
-      // 전체 경로(옅게)
-      ctx.save(); ctx.lineWidth=4*s; ctx.strokeStyle="rgba(185,194,217,0.25)";
-      const p0 = toCXabs(pts[0]); ctx.beginPath(); ctx.moveTo(p0.x,p0.y);
-      for (let i=1;i<pts.length;i++){ const p=toCXabs(pts[i]); ctx.lineTo(p.x,p.y); }
-      ctx.stroke(); ctx.restore();
+      drawPolylineAbs(ctx, pts, "rgba(185,194,217,0.25)", 4*s, []);
+
 
            if (nowSec < tStart) {
        const head0 = pts[0];
@@ -1561,33 +1554,81 @@ function drawIngamePreview(nowSec){
 
     // --- BULLET: 크기 설정 가능(기본 64px 지름) ---
     else if (n.type === "Bullet"){
-        const t0 = getBulletSpawnSec(n);
-          const toDock = getBulletToDockSec(n);
-  const dockToDespawn = getBulletDockToDespawnSec(n);
-  const t1 = t0 + toDock;
-  const t2 = t1 + dockToDespawn;
+      const t0 = getBulletSpawnSec(n);
+      const toDock = getBulletToDockSec(n);
+      const dockToDespawn = getBulletDockToDespawnSec(n);
+      const t1 = t0 + toDock;
+      const t2 = t1 + dockToDespawn;
+
       if (nowSec < t0-0.2 || nowSec > t2+0.2) continue;
-      const S=n.bulletSpawnPos, D=n.bulletDockPos, E=n.bulletDespawnPos;
+
+      const S = n.bulletSpawnPos;
+      const D = n.bulletDockPos;
+      const E = n.bulletDespawnPos;
+
+      const curved = !!n.bulletCurved;
 
       const bulletDiameter = Math.max(1, num($("#bulletSize")?.value || "64")); // px
       const bulletR = bulletDiameter * 0.5;
 
-      drawLineAbs(ctx,S,D,"rgba(217,188,90,0.25)",2*s,[6,6]);
-      drawLineAbs(ctx,D,E,"rgba(217,188,90,0.18)",2*s,[6,6]);
-
-      let cur;
-      if (nowSec < t1){
-        const r=clamp((nowSec - t0)/Math.max(1e-6,t1-t0),0,1);
-        cur = { x: lerp(S.x,D.x,r), y: lerp(S.y,D.y,r) };
+      // =========================
+      // PATH (배경 경로 표시)
+      // =========================
+      if (!curved){
+        // 직선
+        drawLineAbs(ctx, S, D, "rgba(217,188,90,0.25)", 2*s, [6,6]);
+        drawLineAbs(ctx, D, E, "rgba(217,188,90,0.18)", 2*s, [6,6]);
       } else {
-        const r=clamp((nowSec - t1)/Math.max(1e-6,t2-t1),0,1);
-        cur = { x: lerp(D.x,E.x,r), y: lerp(D.y,E.y,r) };
+        // Catmull-Rom
+        const pathPts = sampleCatmullPathAbs([S, D, E], 24);
+        drawPolylineAbs(ctx, pathPts, "rgba(217,188,90,0.22)", 2*s, [6,6]);
       }
+
+      // =========================
+      // POSITION (시간 → 위치)
+      // =========================
+      let cur;
+
+      if (!curved){
+        // ---- 기존 선형 보간 ----
+        if (nowSec < t1){
+          const r = clamp((nowSec - t0)/Math.max(1e-6, t1-t0), 0, 1);
+          cur = { x: lerp(S.x, D.x, r), y: lerp(S.y, D.y, r) };
+        } else {
+          const r = clamp((nowSec - t1)/Math.max(1e-6, t2-t1), 0, 1);
+          cur = { x: lerp(D.x, E.x, r), y: lerp(D.y, E.y, r) };
+        }
+      } else {
+        // ---- Catmull 경로 따라 이동 ----
+        const steps = 24;
+        const sampled = sampleCatmullPathAbs([S, D, E], steps);
+
+        // sampleCatmullPathAbs([S,D,E],steps)는:
+        // 0 ~ steps   : S -> D
+        // steps ~ end : D -> E
+        const seg1 = sampled.slice(0, steps + 1);
+        const seg2 = sampled.slice(steps);
+
+        if (nowSec < t1){
+          const r = clamp((nowSec - t0)/Math.max(1e-6, t1-t0), 0, 1);
+          cur = pointOnPolyline(seg1, r);
+        } else {
+          const r = clamp((nowSec - t1)/Math.max(1e-6, t2-t1), 0, 1);
+          cur = pointOnPolyline(seg2, r);
+        }
+      }
+
+      // =========================
+      // DRAW BULLET
+      // =========================
       drawCircleAbs(ctx, cur, bulletR, "#fbbf24", "rgba(251,191,36,0.25)", 2*s);
+
+      // Dock 타이밍 강조
       if (Math.abs(nowSec - t1) < 0.05){
         drawCircleAbs(ctx, D, bulletR*1.3, "#ffd48a", "rgba(255,212,138,0.15)", 3*s);
       }
     }
+
   }
 }
 
@@ -2069,9 +2110,25 @@ function addSlider(){
   const startTime=num($("#sliderStartSec").value), startBeat=num($("#sliderStartBeat").value);
   const duration=num($("#sliderDurSec").value), durationBeats=num($("#sliderDurBeats").value);
   pushNote({type:"Slider", absPath: pathPtsAbs.map(p=>({x:Math.round(p.x),y:Math.round(p.y)})),
-            startTime, startBeat, duration, durationBeats});
+            startTime, startBeat, duration, durationBeats, sliderCurved: $("#sliderCurved")?.checked === true
+});
   clearPath();
 }
+function evalBulletSegment(A, C, B, r, curved){
+  if (!curved) {
+    return {
+      x: lerp(A.x, B.x, r),
+      y: lerp(A.y, B.y, r)
+    };
+  }
+  // quadratic bezier
+  const u = 1 - r;
+  return {
+    x: u*u*A.x + 2*u*r*C.x + r*r*B.x,
+    y: u*u*A.y + 2*u*r*C.y + r*r*B.y
+  };
+}
+
 function addBullet(){
   if(editIndex!==null) return;
   const spawn = parseAbsXY($("#bulletSpawn").value,"192,540");
@@ -2080,15 +2137,26 @@ function addBullet(){
   const startSec=num($("#bulletStartSec").value), startBeat=num($("#bulletStartBeat").value);
   const toDockSec=num($("#bulletToDockSec").value), toDockBeats=num($("#bulletToDockBeats").value);
   const dockToDespawnSec=num($("#bulletDockToDespawnSec").value), dockToDespawnBeats=num($("#bulletDockToDespawnBeats").value);
-  pushNote({
-    type:"Bullet",
-    bulletSpawnPos:{x:spawn.x, y:spawn.y},
-    bulletDockPos:{x:dock.x, y:dock.y},
-    bulletDespawnPos:{x:desp.x, y:desp.y},
-    bulletSpawnTime:startSec, bulletSpawnBeat:startBeat,
-    bulletToDockDuration:toDockSec, bulletToDockBeats:toDockBeats,
-    bulletDockToDespawnDuration:dockToDespawnSec, bulletDockToDespawnBeats:dockToDespawnBeats
-  });
+    pushNote({
+        type:"Bullet",
+
+        bulletSpawnPos:{x:spawn.x, y:spawn.y},
+        bulletDockPos:{x:dock.x, y:dock.y},
+        bulletDespawnPos:{x:desp.x, y:desp.y},
+
+        bulletSpawnTime:startSec,
+        bulletSpawnBeat:startBeat,
+
+        bulletToDockDuration:toDockSec,
+        bulletToDockBeats:toDockBeats,
+
+        bulletDockToDespawnDuration:dockToDespawnSec,
+        bulletDockToDespawnBeats:dockToDespawnBeats,
+
+        // 추가
+        bulletCurved: $("#bulletCurved")?.checked === true
+    });
+
   if($("#bullet3Click").checked){ bulletStage = 0; bulletTemp = { spawn:null, dock:null, despawn:null }; updateBulletStageLabel(); drawView(); }
 }
 
@@ -2170,6 +2238,8 @@ function startEdit(i){
     pathPtsAbs = (n.absPath||[]).map(p=>({x:p.x,y:p.y})); $("#pathCount").textContent=String(pathPtsAbs.length); pathFinished=false;
     $("#sliderStartSec").value=n.startTime??0; $("#sliderStartBeat").value=n.startBeat??0;
     $("#sliderDurSec").value=n.duration??0; $("#sliderDurBeats").value=n.durationBeats??0;
+    $("#sliderCurved").checked = !!n.sliderCurved;
+
     renderPointList();
   }else if(n.type==="Bullet"){
     const s = n.bulletSpawnPos || {x:192,y:540};
@@ -2181,6 +2251,7 @@ function startEdit(i){
     $("#bulletStartSec").value = n.bulletSpawnTime??0; $("#bulletStartBeat").value = n.bulletSpawnBeat??0;
     $("#bulletToDockSec").value = n.bulletToDockDuration??0; $("#bulletToDockBeats").value = n.bulletToDockBeats??0;
     $("#bulletDockToDespawnSec").value = n.bulletDockToDespawnDuration??0; $("#bulletDockToDespawnBeats").value = n.bulletDockToDespawnBeats??0;
+    $("#bulletCurved").checked = !!n.bulletCurved;
   }else if(n.type==="Camera"){
     $("#camStartSec").value  = n.startTime??0;
     $("#camStartBeat").value = n.startBeat??0;
@@ -4096,4 +4167,5 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
 
