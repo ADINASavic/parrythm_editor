@@ -448,6 +448,9 @@
           <option value="4">1/4</option>
           <option value="8" selected>1/8</option>
           <option value="16">1/16</option>
+          <option value="24">1/24</option>
+          <option value="32">1/32</option>
+          <option value="64">1/64</option>
         </select>
       </label>
       <label class="mini">Speed
@@ -3492,21 +3495,107 @@ function drawWave(){
   drawNoteBlocks();
 
 }
-function drawPeaksRange(ctx,w,h,buffer,vStart,vEnd,scale){
-  const sr=buffer.sampleRate, ch0=buffer.getChannelData(0), ch1=(buffer.numberOfChannels>1?buffer.getChannelData(1):null);
-  const iStart=Math.max(0,Math.floor(vStart*sr)), iEnd=Math.min(ch0.length,Math.ceil(vEnd*sr)); if(iEnd<=iStart) return;
-  const samples=iEnd-iStart, spp=Math.max(1,Math.floor(samples/w)), cy=h/2; ctx.fillStyle="#6ee7b7";
-  for(let x=0;x<w;x++){
-    const start=iStart+x*spp, end=Math.min(iEnd,start+spp);
-    let min=1,max=-1;
-    for(let i=start;i<end;i++){
-      const a0=ch0[i], a1=ch1?ch1[i]:0, a=ch1?((a0+a1)*0.5):a0;
-      if(a<min)min=a; if(a>max)max=a;
+function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
+  const data = audioBuffer.getChannelData(0);
+  const sr   = audioBuffer.sampleRate;
+
+  const centerY = h * 0.5;
+  const gain = ampScale * 0.85;
+
+  const span = Math.max(1e-6, t1 - t0);
+
+  // ===== 파형 밀도 제어 =====
+  const samplesPerPixel = Math.max(
+    32,
+    Math.floor((span * sr) / w)
+  );
+  const xStep = 2;
+
+  /* =================================================
+     1) 전체 대역 envelope (참고용, 과하지 않게)
+     ================================================= */
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(155,220,255,0.5)";
+
+  for(let x = 0; x < w; x += xStep){
+    const base = Math.floor((t0 * sr) + x * samplesPerPixel);
+    if(base >= data.length) break;
+
+    let min =  1.0;
+    let max = -1.0;
+
+    for(let i = 0; i < samplesPerPixel; i++){
+      const v = data[base + i];
+      if(v === undefined) break;
+      if(v < min) min = v;
+      if(v > max) max = v;
     }
-    const y1=cy+min*cy*scale, y2=cy+max*cy*scale;
-    ctx.fillRect(x,y1,1,Math.max(1,y2-y1));
+
+    const yMin = centerY - min * centerY * gain;
+    const yMax = centerY - max * centerY * gain;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, yMin);
+    ctx.lineTo(x + 0.5, yMax);
+    ctx.stroke();
   }
+
+  /* =================================================
+     2) 저음 강조 overlay (임계 기반, 핵심 부분)
+     ================================================= */
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255,200,120,0.85)";
+
+  // 🔑 저음/킥 강조 임계값
+  // 곡에 따라 0.06 ~ 0.12 사이가 적당
+  const THRESHOLD = 0.08;
+
+  for(let x = 0; x < w; x += xStep){
+    const base = Math.floor((t0 * sr) + x * samplesPerPixel);
+    if(base >= data.length) break;
+
+    let sumSq = 0;
+    let count = 0;
+
+    for(let i = 0; i < samplesPerPixel; i++){
+      const v = data[base + i];
+      if(v === undefined) break;
+      sumSq += v * v;
+      count++;
+    }
+
+    if(count === 0) continue;
+
+    // RMS 에너지
+    let rms = Math.sqrt(sumSq / count);
+
+    // 🔑 임계 이하 제거 (중요)
+    if(rms < THRESHOLD) continue;
+
+    // 임계 초과분만 정규화
+    rms = (rms - THRESHOLD) / (1.0 - THRESHOLD);
+
+    const y = centerY - rms * centerY * gain;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, centerY);
+    ctx.lineTo(x + 0.5, y);
+    ctx.stroke();
+  }
+
+  /* =================================================
+     중앙 기준선
+     ================================================= */
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#334";
+  ctx.beginPath();
+  ctx.moveTo(0, centerY);
+  ctx.lineTo(w, centerY);
+  ctx.stroke();
 }
+
+
+
 function drawTimeGrid(ctx,w,h,vStart,vEnd){
   const span=vEnd-vStart; if(span<=0) return;
   const targetPx=80; const secPerPx=span/w; const raw=targetPx*secPerPx;
@@ -3521,7 +3610,8 @@ function drawTimeGrid(ctx,w,h,vStart,vEnd){
   }
 }
 function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv){
-  const spb=60/bpm; let bi=Math.floor((vStart-off)/spb)-1;
+  const spb=60/bpm; const span=vEnd-vStart; const pxPerSec = (span>0)?(w/span):0;
+  let bi=Math.floor((vStart-off)/spb)-1;
   for(;;bi++){
     const t=off+bi*spb; if(t>vEnd) break;
     if(t>=vStart){
@@ -3531,6 +3621,9 @@ function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv){
       if(bar){ ctx.fillStyle="#b9c2d9"; ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2,x+2), h-6); }
     }
     if(subdiv && subdiv>1){
+      // 너무 촘촘하면(줌아웃) 보조선은 생략해서 가시성과 성능을 지킵니다.
+      const subPx = pxPerSec * (spb / subdiv);
+      if(subPx < 3) continue;
       for(let k=1;k<subdiv;k++){
         const tk=t+k*spb/subdiv; if(tk<vStart||tk>vEnd) continue;
         const xk=timeToX(tk); ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke();
@@ -4167,6 +4260,8 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
+
 
 
 
