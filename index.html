@@ -518,7 +518,7 @@ const GRID_H = GRID_BOTTOM - GRID_TOP;   // 648
 const GRID_CELL = GRID_W / 3;      
 
 const $ = s => document.querySelector(s);
-
+const view = $("#view"); const ctx = view.getContext("2d");
 /* ---------- 절대좌표 기준 ---------- */
 const REF_W = 1920;
 const REF_H = 1080;
@@ -973,7 +973,7 @@ function refreshGridActive(){
 }
 
 /* ---------- Viewport ---------- */
-const view = $("#view"); const ctx = view.getContext("2d");
+
 $("#aspect").addEventListener("change", e=>{ aspect = parseFloat(e.target.value)||1; drawView(); });
 
 function getAR(){
@@ -4167,5 +4167,6 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
 
 
