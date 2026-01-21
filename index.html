@@ -59,7 +59,7 @@
   .tempo-row .tempo-beat{width:90px}
   .tempo-row .tempo-bpm{width:90px}
   .tempo-row button{padding:4px 8px}
-  .time-sig-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .time-sig-row{display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap}
   .time-sig-row input{width:90px}
   .time-sig-row .sig-beat{width:90px}
   .time-sig-row .sig-num{width:70px}
@@ -1042,6 +1042,7 @@ let chart = {
 };
 let tempoCache = { entries: [{ beat: 0, bpm: 120, secAtBeat: 0 }] };
 let timeSigCache = { entries: [{ beat: 0, numerator: 4, denominator: 4 }] };
+let miniWindowStartBeat = null;
 
 function fixedBpm(){ return num($("#bpm").value); }
 function fixedSpb(){ const bpm = fixedBpm(); return bpm > 0 ? 60 / bpm : 0; }
@@ -4544,7 +4545,13 @@ function getMiniWindowRange(t, offset){
   const beatNow = tempoSecToBeat(relSec);
   const info = barInfoAtBeat(beatNow);
   const windowBeats = info.beatsPerBar * 2;
-  const windowStartBeat = info.barStart;
+  if (!isFinite(miniWindowStartBeat)){
+    miniWindowStartBeat = info.barStart;
+  }
+  if (beatNow < miniWindowStartBeat || beatNow >= (miniWindowStartBeat + windowBeats)){
+    miniWindowStartBeat = info.barStart;
+  }
+  const windowStartBeat = miniWindowStartBeat;
   const startSec = tempoBeatToSec(windowStartBeat) + offset;
   const endSec = tempoBeatToSec(windowStartBeat + windowBeats) + offset;
   if (isFinite(startSec) && isFinite(endSec)){
