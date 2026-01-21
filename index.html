@@ -1165,6 +1165,11 @@ function timeSigAtBeat(beat){
   }
   return current;
 }
+function beatUnitAtBeat(beat){
+  const sig = timeSigAtBeat(beat);
+  const denominator = sig?.denominator ?? 4;
+  return 4 / Math.max(1, denominator);
+}
 function beatsPerBar(entry){
   const numerator = entry?.numerator ?? 4;
   const denominator = entry?.denominator ?? 4;
@@ -4334,7 +4339,8 @@ if (e.code && e.code.startsWith('Numpad')){
   const cur = (typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : (audioEl.currentTime || 0);
   const offset = computeOffsetSeconds();
   const curBeat = tempoSecToBeat(cur - offset);
-  const targetBeat = curBeat + dir * (1 / subdiv);
+  const unit = beatUnitAtBeat(curBeat);
+  const targetBeat = curBeat + dir * (unit / subdiv);
   const target = Math.max(0, Math.min(getDuration(), tempoBeatToSec(targetBeat) + offset));
   const snapped = snapTime(target);
   // If playing, seek; otherwise move previewTimeSec and refresh
@@ -4593,18 +4599,22 @@ function drawWaveMini(){
 function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, off, mapX){
   const startBeat = Math.floor(tempoSecToBeat(vStart - off)) - 1;
   const endBeat = Math.ceil(tempoSecToBeat(vEnd - off)) + 1;
-  for (let bi = startBeat; bi <= endBeat; bi++){
-    const t = tempoBeatToSec(bi) + off;
-    if (t < vStart || t > vEnd) continue;
-    const x = mapX(t);
-    const barInfo = barInfoAtBeat(bi);
-    const bar = Math.abs(bi - barInfo.barStart) < 1e-6;
-    ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
-    ctx.lineWidth = bar ? 2 : 1;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
+  let beat = startBeat;
+  while (beat <= endBeat){
+    const info = barInfoAtBeat(beat);
+    const unit = beatUnitAtBeat(beat);
+    const t = tempoBeatToSec(beat) + off;
+    if (t >= vStart && t <= vEnd){
+      const x = mapX(t);
+      const bar = Math.abs(beat - info.barStart) < 1e-6;
+      ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
+      ctx.lineWidth = bar ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    beat += unit;
   }
 }
 function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
@@ -4774,30 +4784,35 @@ function drawBeatGrid(ctx,w,h,vStart,vEnd,off,subdiv,mapX=timeToX){
   const span=vEnd-vStart; const pxPerSec = (span>0)?(w/span):0;
   const startBeat = Math.floor(tempoSecToBeat(vStart - off)) - 1;
   const endBeat = Math.ceil(tempoSecToBeat(vEnd - off)) + 1;
-  for(let bi=startBeat; bi<=endBeat; bi++){
-    const t=tempoBeatToSec(bi) + off;
-    if(t < vStart || t > vEnd) continue;
-    const x=mapX(t);
-    const barInfo = barInfoAtBeat(bi);
-    const bar = Math.abs(bi - barInfo.barStart) < 1e-6;
-    ctx.strokeStyle = bar ? "#66d9ef" : "#265a6d";
-    ctx.lineWidth = bar ? 3 : 1.5;
-    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
-    if(bar){
-      const barLabel = `M${barInfo.barIndex + 1}`;
-      ctx.fillStyle="#b9c2d9";
-      ctx.fillText(barLabel, Math.max(2,x+2), h-6);
-    }
-    if(subdiv && subdiv>1){
-      if(pxPerSec <= 0) continue;
-      for(let k=1;k<subdiv;k++){
-        const subBeat = bi + (k / subdiv);
-        const tk=tempoBeatToSec(subBeat) + off; if(tk<vStart||tk>vEnd) continue;
-        const xk=mapX(tk);
-        ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke();
+  let beat = startBeat;
+  while (beat <= endBeat){
+    const info = barInfoAtBeat(beat);
+    const unit = beatUnitAtBeat(beat);
+    const t=tempoBeatToSec(beat) + off;
+    if(t >= vStart && t <= vEnd){
+      const x=mapX(t);
+      const bar = Math.abs(beat - info.barStart) < 1e-6;
+      ctx.strokeStyle = bar ? "#66d9ef" : "#265a6d";
+      ctx.lineWidth = bar ? 3 : 1.5;
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+      if(bar){
+        const barLabel = `M${info.barIndex + 1}`;
+        ctx.fillStyle="#b9c2d9";
+        ctx.fillText(barLabel, Math.max(2,x+2), h-6);
+      }
+      if(subdiv && subdiv>1){
+        if(pxPerSec > 0){
+          for(let k=1;k<subdiv;k++){
+            const subBeat = beat + (k * unit / subdiv);
+            const tk=tempoBeatToSec(subBeat) + off; if(tk<vStart||tk>vEnd) continue;
+            const xk=mapX(tk);
+            ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1;
+            ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke();
+          }
+        }
       }
     }
+    beat += unit;
   }
 }
 
@@ -4951,10 +4966,13 @@ function snapTime(t){
 
   // 현재 시간을 오프셋 기준 비트 좌표로 옮김
   const relBeats = tempoSecToBeat(t - off);
+  const unit = beatUnitAtBeat(relBeats);
+  const grid = unit / Math.max(1, subdiv);
 
   // ★정수 격자(k/subdiv)에 스냅 (부동소수 출력 없음)
-  const k = Math.round(relBeats * subdiv); // integer grid index
-  const snappedSec = off + tempoBeatToSec(k / subdiv);
+  const k = Math.round(relBeats / grid); // integer grid index
+  const snappedBeat = k * grid;
+  const snappedSec = off + tempoBeatToSec(snappedBeat);
 
   return snappedSec; // 절대초(플레이백 좌표)
 }
@@ -4975,8 +4993,10 @@ function snappedBeatsFromSec(secPlayback){
 
   // sec → 비트 좌표 → k 정수 → k/subdiv 로 복원
   const rel = tempoSecToBeat(secPlayback - off);
-  const k   = Math.round(rel * subdiv);
-  return k / subdiv; // 정확한 비트(분수)
+  const unit = beatUnitAtBeat(rel);
+  const grid = unit / Math.max(1, subdiv);
+  const k   = Math.round(rel / grid);
+  return k * grid; // 정확한 비트(분수)
 }
 
 const rateSelect = $("#playbackRate");
