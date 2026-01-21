@@ -45,7 +45,7 @@
   .fullrow{grid-column:1 / -1}
   .wave-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .mini-side{display:flex;gap:10px;align-items:flex-start}
-  .mini-wave-panel{width:300px;padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
+  .mini-wave-panel{width:600px;padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
   .mini-wave-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .mini-wave-toolbar .controls{display:flex;gap:6px}
   .mini-wave-btn{padding:4px 6px;border-radius:6px;font-size:12px}
@@ -524,7 +524,7 @@
                 <button id="miniPauseBtn" class="mini-wave-btn" disabled>Pause</button>
               </div>
             </div>
-            <canvas id="waveMini" height="110" style="width:300px"></canvas>
+            <canvas id="waveMini" height="220" style="width:600px"></canvas>
           </div>
         </div>
 
@@ -3498,7 +3498,7 @@ function resizeWaveCanvas(){
 function resizeWaveMiniCanvas(){
   if (!waveMiniCanvas || !wctxMini) return;
   const dpr=window.devicePixelRatio||1, cssW=waveMiniCanvas.clientWidth, cssH=waveMiniCanvas.clientHeight;
-  waveMiniCanvas.width=Math.max(300,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.floor(cssH*dpr);
+  waveMiniCanvas.width=Math.max(600,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.floor(cssH*dpr);
   wctxMini.setTransform(dpr,0,0,dpr,0,0);
   drawWaveMini();
 }
@@ -4053,8 +4053,29 @@ function drawWaveMini(){
     const span=(miniEnd-miniStart)||1;
     return ((time-miniStart)/span)*w;
   };
+  if (bpm > 0) {
+    drawMiniBeatGrid(wctxMini, w, h, miniStart, miniEnd, bpm, offset, mapX);
+  }
   if(t>=miniStart && t<=miniEnd){
     const x=mapX(t); wctxMini.strokeStyle="#ffd48a"; wctxMini.lineWidth=2; wctxMini.beginPath(); wctxMini.moveTo(x,0); wctxMini.lineTo(x,h); wctxMini.stroke();
+  }
+}
+function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, bpm, off, mapX){
+  const spb = 60 / bpm;
+  let bi = Math.floor((vStart - off) / spb) - 1;
+  for(;;bi++){
+    const t = off + bi * spb;
+    if(t > vEnd) break;
+    if(t >= vStart){
+      const x = mapX(t);
+      const bar = (bi % 4 === 0);
+      ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
+      ctx.lineWidth = bar ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
   }
 }
 function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
