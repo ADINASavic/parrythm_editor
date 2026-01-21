@@ -779,7 +779,7 @@ function getLineTriggerSec(n){
   const S = spb(); // sec per beat
   const byBeats = (chart.timeMode === "Beats");
   // UI에서 채운 축을 우선 사용 (없으면 다른 축 환산)
-  let baseSec = null;
+  let baseSec = 0;
   if (!byBeats) {
     baseSec = Number.isFinite(n.timeSec) ? n.timeSec
               : (Number.isFinite(n.timeBeat) ? (n.timeBeat * (S||1)) : 0);
@@ -787,7 +787,7 @@ function getLineTriggerSec(n){
     baseSec = Number.isFinite(n.timeBeat) ? (n.timeBeat * (S||1))
               : (Number.isFinite(n.timeSec) ? n.timeSec : 0);
   }
-  return (baseSec || 0) + computeOffsetSeconds(); // ← 오프셋을 항상 초로 더함
+  return baseSec || 0;
 }
 
 // 버튼 클릭으로 추가
@@ -892,16 +892,11 @@ function rgbaToCSS(c){ return `rgba(${c.r},${c.g},${c.b},${(c.a/255).toFixed(3)}
 let styleEvents = []; // {tSec, color, fadeSec, target, index, _ref}
 function buildStyleSchedule(){
   styleEvents = [];
-  const off = computeOffsetSeconds() || 0;
 
   for (const n of chart.notes || []) {
     if (n.type !== STYLE_TYPE) continue;
 
-    // ▶ timeBeat가 있으면 beats→sec 후 오프셋 더하고,
-    //    없으면 timeSec에 오프셋을 더한다.
-    const tSec = (isFinite(n.timeBeat))
-      ? (beatsToSec(n.timeBeat) + off)
-      : ((n.timeSec ?? 0) + off);
+    const tSec = chartTimeToPlaybackSec({ sec: n.timeSec, beat: n.timeBeat });
 
     const fadeSec = (n.fadeBeat != null && isFinite(n.fadeBeat))
       ? beatsToSec(n.fadeBeat)
@@ -4012,7 +4007,7 @@ function drawWave(){
   wctx.clearRect(0,0,w,h); wctx.fillStyle="#0b0f1c"; wctx.fillRect(0,0,w,h);
   if(audioBuffer){ drawPeaksRange(wctx,w,h,audioBuffer,viewStart,viewEnd,ampScale); }
   else{ wctx.fillStyle="#9aa4bb"; wctx.fillText("오디오 파일을 선택하세요.", 10, h/2); }
-  const bpm=num($("#bpm").value); const duration=getDuration(), offset=computeOffsetSeconds();
+  const bpm=num($("#bpm").value); const duration=getDuration(), offset=chartTimeToPlaybackSec({ sec: 0 });
   drawTimeGrid(wctx,w,h,viewStart,viewEnd);
   if(bpm>0 && duration>0){ drawBeatGrid(wctx,w,h,viewStart,viewEnd,bpm,offset,parseInt($("#subdiv").value||"8")); }
   // 기존: const t = nowSecQms();
@@ -4375,7 +4370,9 @@ function cellToAbsPos(c, r) {
 
 function beatInfoAt(t){
   const bpm=num($("#bpm").value); if(bpm<=0) return {valid:false,text:"-"};
-  const spb=60/bpm, off=computeOffsetSeconds(); const beats=(t-off)/spb;
+  const spb = 60 / bpm;
+  const off = chartTimeToPlaybackSec({ sec: 0 });
+  const beats=(t-off)/spb;
   const bar=Math.floor(beats/4)+1, inBar=beats-(bar-1)*4, bnum=Math.floor(inBar)+1, frac=inBar-Math.floor(inBar);
   return {valid:true, text:`${beats.toFixed(3)} (M${bar}, B${bnum}${frac>0?`+${frac.toFixed(3)}`:""})`};
 }
@@ -4389,7 +4386,7 @@ function applyTimeFromWave(t0, t1){
   if (!Number.isFinite(t0)) return;
 
   const S   = spb();                     // sec per beat
-  const off = computeOffsetSeconds();    // chart offset (sec)
+  const off = chartTimeToPlaybackSec({ sec: 0 });    // chart offset (sec)
 
   const toBeatsUI = (secPlayback) => (S > 0 ? (secPlayback - off) / S : 0);
   const snap1ms   = (t) => snapTime(t);       // 1ms 양자화
@@ -4473,7 +4470,7 @@ function snapTime(t){
 
   const subdiv = parseInt($("#subdiv").value || "8");
   const spb    = 60 / bpm;                 // seconds per beat
-  const off    = computeOffsetSeconds();
+  const off    = chartTimeToPlaybackSec({ sec: 0 });
 
   // 현재 시간을 오프셋 기준 비트 좌표로 옮김
   const relBeats = (t - off) / spb;
@@ -4497,7 +4494,7 @@ function redrawBeat(){
 function snappedBeatsFromSec(secPlayback){
   const bpm = num($("#bpm").value);
   const spb = (bpm > 0) ? 60 / bpm : 0;
-  const off = computeOffsetSeconds();
+  const off = chartTimeToPlaybackSec({ sec: 0 });
   const subdiv = parseInt($("#subdiv").value || "8");
   if (spb <= 0 || subdiv <= 0) return 0;
 
@@ -4607,8 +4604,6 @@ function drawCameraBadges(nowSec){
   }
 }
 
-function offsetSec(){ return computeOffsetSeconds() || 0; }
-
 function chartTimeToPlaybackSec({sec=null, beat=null}) {
   const byBeats = ($("#timeMode").value === "Beats");
   const S = spb(); // sec per beat
@@ -4626,7 +4621,7 @@ function chartTimeToPlaybackSec({sec=null, beat=null}) {
     else baseSec = 0;
   }
   // ★ 오프셋 보정
-  return baseSec + offsetSec();
+  return baseSec + computeOffsetSeconds();
 }
 
 function setPlaybackRate(r){
