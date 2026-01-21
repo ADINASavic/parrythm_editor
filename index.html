@@ -4124,7 +4124,7 @@ function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, bpm, off, mapX){
 function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
   const data = audioBuffer.getChannelData(0);
   const sr   = audioBuffer.sampleRate;
-  const centerY = h * 0.5;
+  const centerY = Math.max(1, h - 1);
   const gain = Math.min(1, ampScale * 1.1);
   const span = Math.max(1e-6, t1 - t0);
   const samplesPerPixel = Math.max(12, Math.floor((span * sr) / w));
@@ -4174,7 +4174,7 @@ function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
   const data = audioBuffer.getChannelData(0);
   const sr   = audioBuffer.sampleRate;
 
-  const centerY = h * 0.5;
+  const centerY = Math.max(1, h - 1);
   const gain = ampScale * 0.85;
 
   const span = Math.max(1e-6, t1 - t0);
