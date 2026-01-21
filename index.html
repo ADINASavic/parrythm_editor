@@ -54,6 +54,11 @@
   .timebadge{font-variant-numeric:tabular-nums}
   .sep{width:1px;height:22px;background:#2d3653;margin:0 4px}
   .mini{width:auto}
+  .tempo-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .tempo-row input{width:120px}
+  .tempo-row .tempo-beat{width:90px}
+  .tempo-row .tempo-bpm{width:90px}
+  .tempo-row button{padding:4px 8px}
   #orderToolbar{gap:8px;align-items:center;margin:6px 0}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .collapseBtn{background:transparent;border:1px solid #2d3653;color:var(--muted);padding:2px 6px;border-radius:6px;font-size:12px;cursor:pointer}
@@ -346,7 +351,14 @@
   <input id="fmodEvent" type="text" placeholder="event:/your/path/here">
 </div>
     <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"></div>
-    <div class="row"><label>BPM</label><input id="bpm" type="number" value="120" step="0.01"></div>
+    <div class="row"><label>Fixed BPM (Game)</label><input id="bpm" type="number" value="120" step="0.01"></div>
+    <div class="row">
+      <label>Tempo Map</label>
+      <label class="mini"><input id="tempoMapEnabled" type="checkbox" checked> Enable</label>
+      <button id="tempoAddBtn" type="button">Add</button>
+    </div>
+    <div id="tempoMapList"></div>
+    <div class="hint">Editor preview/beat grid uses this map. Export keeps fixed BPM and also saves map in song.json.</div>
     <div class="row"><label>Time Mode</label>
       <select id="timeMode"><option value="Seconds">Seconds</option><option value="Beats">Beats</option></select>
     </div>
@@ -776,15 +788,14 @@ function addStyleEventFromUI(){
 
 
 function getLineTriggerSec(n){
-  const S = spb(); // sec per beat
   const byBeats = (chart.timeMode === "Beats");
   // UI에서 채운 축을 우선 사용 (없으면 다른 축 환산)
   let baseSec = null;
   if (!byBeats) {
     baseSec = Number.isFinite(n.timeSec) ? n.timeSec
-              : (Number.isFinite(n.timeBeat) ? (n.timeBeat * (S||1)) : 0);
+              : (Number.isFinite(n.timeBeat) ? beatsToSec(n.timeBeat) : 0);
   } else {
-    baseSec = Number.isFinite(n.timeBeat) ? (n.timeBeat * (S||1))
+    baseSec = Number.isFinite(n.timeBeat) ? beatsToSec(n.timeBeat)
               : (Number.isFinite(n.timeSec) ? n.timeSec : 0);
   }
   return (baseSec || 0) + computeOffsetSeconds(); // ← 오프셋을 항상 초로 더함
@@ -1011,8 +1022,156 @@ let chart = {
   schemaVersion: 2,
   title:"New Chart", bpm:120, timeMode:"Seconds",
   startOffset:0, startOffsetBeats:0,
+  tempoMapEnabled: true,
+  tempoMap: [{ beat: 0, bpm: 120 }],
   notes:[]
 };
+let tempoCache = { entries: [{ beat: 0, bpm: 120, secAtBeat: 0 }] };
+
+function fixedBpm(){ return num($("#bpm").value); }
+function fixedSpb(){ const bpm = fixedBpm(); return bpm > 0 ? 60 / bpm : 0; }
+function fixedBeatToSec(beat){ return (beat || 0) * fixedSpb(); }
+function fixedSecToBeat(sec){ const s = fixedSpb(); return s > 0 ? (sec || 0) / s : 0; }
+
+function normalizeTempoMap(map, baseBpm){
+  const cleaned = (Array.isArray(map) ? map : [])
+    .map(e => ({ beat: Number(e?.beat ?? 0), bpm: Number(e?.bpm ?? baseBpm) }))
+    .filter(e => isFinite(e.beat) && isFinite(e.bpm) && e.bpm > 0)
+    .sort((a,b)=> a.beat - b.beat);
+  if (cleaned.length === 0) return [{ beat: 0, bpm: baseBpm }];
+  if (cleaned[0].beat > 0) cleaned.unshift({ beat: 0, bpm: baseBpm });
+  if (cleaned[0].beat === 0 && !(cleaned[0].bpm > 0)) cleaned[0].bpm = baseBpm;
+  return cleaned;
+}
+
+function rebuildTempoCache(){
+  const baseBpm = Math.max(1e-6, fixedBpm() || 120);
+  const enabled = !!$("#tempoMapEnabled")?.checked;
+  chart.tempoMapEnabled = enabled;
+  const entries = enabled
+    ? normalizeTempoMap(chart.tempoMap, baseBpm)
+    : [{ beat: 0, bpm: baseBpm }];
+  let sec = 0;
+  const withSec = entries.map((entry, idx) => {
+    const out = { ...entry, secAtBeat: sec };
+    const next = entries[idx + 1];
+    if (next) {
+      const spanBeats = Math.max(0, next.beat - entry.beat);
+      sec += spanBeats * (60 / entry.bpm);
+    }
+    return out;
+  });
+  tempoCache = { entries: withSec };
+}
+
+function tempoEntries(){ return tempoCache?.entries || [{ beat: 0, bpm: fixedBpm(), secAtBeat: 0 }]; }
+function tempoBpmAtBeat(beat){
+  const entries = tempoEntries();
+  if (!isFinite(beat)) return entries[0].bpm;
+  let current = entries[0];
+  for (const entry of entries){
+    if (entry.beat <= beat) current = entry;
+    else break;
+  }
+  return current.bpm;
+}
+function tempoBeatToSec(beat){
+  const entries = tempoEntries();
+  if (!isFinite(beat)) return 0;
+  if (entries.length === 0) return 0;
+  if (beat < entries[0].beat) return (beat - entries[0].beat) * (60 / entries[0].bpm);
+  let current = entries[0];
+  for (const entry of entries){
+    if (entry.beat <= beat) current = entry;
+    else break;
+  }
+  return current.secAtBeat + (beat - current.beat) * (60 / current.bpm);
+}
+function tempoSecToBeat(sec){
+  const entries = tempoEntries();
+  if (!isFinite(sec)) return 0;
+  if (entries.length === 0) return 0;
+  if (sec < entries[0].secAtBeat) {
+    const spbVal = 60 / entries[0].bpm;
+    return entries[0].beat + (sec - entries[0].secAtBeat) / spbVal;
+  }
+  for (let i=0;i<entries.length;i++){
+    const entry = entries[i];
+    const next = entries[i+1];
+    const nextSec = next ? next.secAtBeat : Infinity;
+    if (sec < nextSec){
+      const spbVal = 60 / entry.bpm;
+      return entry.beat + (sec - entry.secAtBeat) / spbVal;
+    }
+  }
+  const last = entries[entries.length - 1];
+  return last.beat + (sec - last.secAtBeat) / (60 / last.bpm);
+}
+function tempoDurationSec(startBeat, durationBeats){
+  if (!isFinite(durationBeats)) return 0;
+  const baseBeat = isFinite(startBeat) ? startBeat : 0;
+  return Math.max(0, tempoBeatToSec(baseBeat + durationBeats) - tempoBeatToSec(baseBeat));
+}
+
+function renderTempoMapList(){
+  const list = $("#tempoMapList");
+  if (!list) return;
+  const map = normalizeTempoMap(chart.tempoMap, fixedBpm());
+  chart.tempoMap = map;
+  list.innerHTML = "";
+  map.forEach((entry, idx) => {
+    const row = document.createElement("div");
+    row.className = "tempo-row";
+    row.innerHTML = `
+      <span class="pill">#${idx+1}</span>
+      <label class="mini">Beat</label>
+      <input class="tempo-beat" type="number" step="0.001" value="${entry.beat}">
+      <label class="mini">BPM</label>
+      <input class="tempo-bpm" type="number" step="0.01" value="${entry.bpm}">
+      <button type="button" class="bad">Remove</button>
+    `;
+    const beatInput = row.querySelector(".tempo-beat");
+    const bpmInput = row.querySelector(".tempo-bpm");
+    const removeBtn = row.querySelector("button.bad");
+    beatInput?.addEventListener("change", () => {
+      entry.beat = num(beatInput.value);
+      chart.tempoMap = map;
+      rebuildTempoCache();
+      renderTempoMapList();
+      drawWave(); drawView(); redrawBeat();
+      pushHistory();
+    });
+    bpmInput?.addEventListener("change", () => {
+      entry.bpm = Math.max(1e-6, num(bpmInput.value));
+      chart.tempoMap = map;
+      rebuildTempoCache();
+      drawWave(); drawView(); redrawBeat();
+      pushHistory();
+    });
+    removeBtn?.addEventListener("click", () => {
+      if (map.length <= 1) return;
+      map.splice(idx, 1);
+      chart.tempoMap = map;
+      rebuildTempoCache();
+      renderTempoMapList();
+      drawWave(); drawView(); redrawBeat();
+      pushHistory();
+    });
+    list.appendChild(row);
+  });
+}
+
+function addTempoMapPoint(){
+  const map = normalizeTempoMap(chart.tempoMap, fixedBpm());
+  const last = map[map.length - 1];
+  const nextBeat = isFinite(last?.beat) ? last.beat + 4 : 0;
+  map.push({ beat: nextBeat, bpm: last?.bpm || fixedBpm() });
+  chart.tempoMap = map;
+  rebuildTempoCache();
+  renderTempoMapList();
+  drawWave(); drawView(); redrawBeat();
+  pushHistory();
+}
 // --- Undo/Redo history
 const UNDO_LIMIT = 200;
 let undoStack = [];
@@ -1043,6 +1202,10 @@ function applySnapshot(snap){
     try{ if (document.getElementById('timeMode')) document.getElementById('timeMode').value = chart.timeMode || 'Seconds'; }catch(e){}
     try{ if (document.getElementById('startOffsetSec')) document.getElementById('startOffsetSec').value = chart.startOffset || 0; }catch(e){}
     try{ if (document.getElementById('startOffsetBeats')) document.getElementById('startOffsetBeats').value = chart.startOffsetBeats || 0; }catch(e){}
+    try{ if (document.getElementById('tempoMapEnabled')) document.getElementById('tempoMapEnabled').checked = !!chart.tempoMapEnabled; }catch(e){}
+    chart.tempoMap = Array.isArray(chart.tempoMap) ? chart.tempoMap : [{ beat: 0, bpm: chart.bpm || 120 }];
+    rebuildTempoCache();
+    renderTempoMapList();
     ensureCreatedAt(); renderNotes(); if(typeof buildStyleSchedule==='function') buildStyleSchedule(); resetStyleCursor(getPreviewNowSec()); drawWave(); drawView();
   }catch(err){ console.warn('applySnapshot failed', err); }
   historyLock = false;
@@ -1076,7 +1239,22 @@ let bulletTemp = { spawn:null, dock:null, despawn:null };
 
 /* ---------- 좌측 입력 바인딩 ---------- */
 $("#title").addEventListener("input", e=> chart.title = e.target.value );
-$("#bpm").addEventListener("input", e=> { chart.bpm = num(e.target.value); redrawBeat(); });
+$("#bpm").addEventListener("input", e=> {
+  chart.bpm = num(e.target.value);
+  rebuildTempoCache();
+  renderTempoMapList();
+  redrawBeat();
+  drawWave();
+});
+$("#tempoMapEnabled")?.addEventListener("change", () => {
+  rebuildTempoCache();
+  renderTempoMapList();
+  redrawBeat();
+  drawWave();
+  drawView();
+  pushHistory();
+});
+$("#tempoAddBtn")?.addEventListener("click", addTempoMapPoint);
 $("#timeMode").addEventListener("change", e=> { chart.timeMode = e.target.value; redrawBeat(); });
 $("#startOffsetSec").addEventListener("input", e=> { chart.startOffset = num(e.target.value); redrawBeat(); });
 $("#startOffsetBeats").addEventListener("input", e=> { chart.startOffsetBeats = num(e.target.value); redrawBeat(); });
@@ -1482,7 +1660,7 @@ function addVoice(){
   // prefer current preview/playhead time for new notes
   const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
   const musicalNow = nowPlayback - computeOffsetSeconds();
-  const beatNow = (spb() > 0) ? snappedBeatsFromSec(nowPlayback) : 0;
+  const beatNow = snappedBeatsFromSec(nowPlayback);
 
   const note = {
     type: "Voice",
@@ -1511,7 +1689,7 @@ function addImage(){
 
   const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
   const musicalNow = nowPlayback - computeOffsetSeconds();
-  const beatNow = (spb() > 0) ? snappedBeatsFromSec(nowPlayback) : 0;
+  const beatNow = snappedBeatsFromSec(nowPlayback);
 
   const note = {
     type: "Image",
@@ -1599,11 +1777,6 @@ function drawIngamePreview(nowSec){
   const s = (getAR().w / REF_W);
 
   const gridTargetPx = resolveGridTargetPx();
-  const gridGrowSec  = resolveGridGrowPxPerSec();        // px/s
-  const gridLeadSec  = gridTargetPx / gridGrowSec;       // s
-
-  const circleLeadSec = resolveCircleLeadSec();
-  const sliderLeadSec = resolveSliderLeadSec();
   const circleR       = Math.max(1, num($("#circleTargetRadius").value));
   drawCameraBadges(nowSec);
   for (const n of chart.notes){
@@ -1613,6 +1786,9 @@ function drawIngamePreview(nowSec){
 
     // --- GRID & TRAIL ---
     if (n.type === "Grid" && !isLongNote){
+      const beat = getNoteTimeBeats(n);
+      const gridGrowSec  = resolveGridGrowPxPerSec(beat);        // px/s
+      const gridLeadSec  = gridTargetPx / gridGrowSec;       // s
       const tJ = getNoteTimeSec(n), tS = tJ - gridLeadSec;
       if (nowSec < tS-0.2 || nowSec > tJ+0.2) continue;
 
@@ -1632,6 +1808,9 @@ function drawIngamePreview(nowSec){
 
     // --- LONG ---
     else if (isLongNote){
+      const startBeat = isFinite(n.startBeat) ? n.startBeat : getNoteTimeBeats(n);
+      const gridGrowSec  = resolveGridGrowPxPerSec(startBeat);        // px/s
+      const gridLeadSec  = gridTargetPx / gridGrowSec;       // s
       const cell = n.cell || {x:1,y:1};
       const pos = cellToAbsPos(cell.x, cell.y);
       const tStart = getLongStartSec(n);
@@ -1678,6 +1857,8 @@ function drawIngamePreview(nowSec){
 
     // --- CIRCLE: 반지름(px) 기준, 접근 링 → 판정 ---
     else if (n.type === "CircleTap"){
+      const beat = getNoteTimeBeats(n);
+      const circleLeadSec = resolveCircleLeadSecAtBeat(beat);
       const tJ = getNoteTimeSec(n), tS = tJ - circleLeadSec;
       if (nowSec < tS-0.2 || nowSec > tJ+0.2) continue;
 
@@ -1706,6 +1887,8 @@ function drawIngamePreview(nowSec){
       const durSec = getSliderDurationSec(n);
       const tStart = getSliderStartSec(n);
       const tEnd   = tStart + durSec;
+      const beat = isFinite(n.startBeat) ? n.startBeat : getNoteTimeBeats(n);
+      const sliderLeadSec = resolveSliderLeadSecAtBeat(beat);
       const tSpawn = tStart - sliderLeadSec;
       if (nowSec < tSpawn-0.2 || nowSec > tEnd+0.2) continue;
 
@@ -1885,7 +2068,10 @@ function noteTimeWindowSec(n){
     const byBeats = ($("#timeMode").value === "Beats");
     let dur = 0;
     if (isFinite(n.duration) && n.duration > 0) dur = n.duration;
-    else if (isFinite(n.durationBeats) && n.durationBeats > 0) dur = beatsToSec(n.durationBeats, chart.bpm);
+    else if (isFinite(n.durationBeats) && n.durationBeats > 0) {
+      const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.startTime) ? tempoSecToBeat(n.startTime) : 0);
+      dur = tempoDurationSec(startBeat, n.durationBeats);
+    }
     // 최소폭 보장
     const span = Math.max(dur, 0.1);
     return { t0, t1: t0 + span };
@@ -1913,7 +2099,7 @@ function drawNoteBlocks(){
 
   // 작은 헬퍼들
   const beatsToSecLocal = (b) => (typeof beatsToSec === "function")
-    ? beatsToSec(b, chart?.bpm)
+    ? tempoDurationSec(0, b)
     : (b||0) * (60 / (chart?.bpm || 120));
 
   const durSecGeneric = (n) => {
@@ -2087,7 +2273,7 @@ function drawNoteBlocks(){
 }
 
 
-function beatsToSec(b){ return b * spb(); }
+function beatsToSec(b){ return tempoBeatToSec(b); }
 
 function strokeRectAbs(ctx, x0, y0, x1, y1, stroke="#2d3653", lineW=1){
   const a = toCXabs({x:x0,y:y0});
@@ -2148,8 +2334,9 @@ function getSliderStartSec(n){
 function getSliderDurationSec(n){
   // 지속시간은 오프셋과 무관 → mode 우선순위만 유지
   const byBeats = ($("#timeMode").value === "Beats");
-  if (byBeats) return isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration || 0);
-  return isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0);
+  const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.startTime) ? tempoSecToBeat(n.startTime) : 0);
+  if (byBeats) return isFinite(n.durationBeats) ? tempoDurationSec(startBeat, n.durationBeats) : (n.duration || 0);
+  return isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? tempoDurationSec(startBeat, n.durationBeats) : 0);
 }
 
 function getLongStartSec(n){
@@ -2159,7 +2346,8 @@ function getLongStartSec(n){
 function getLongDurationSec(n){
   const byBeats = ($("#timeMode").value === "Beats");
   const durSec = isFinite(n.duration) ? n.duration : undefined;
-  const durBeatSec = isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : undefined;
+  const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.startTime) ? tempoSecToBeat(n.startTime) : 0);
+  const durBeatSec = isFinite(n.durationBeats) ? tempoDurationSec(startBeat, n.durationBeats) : undefined;
   let d;
   if (byBeats) d = (durBeatSec != null && durBeatSec > 0) ? durBeatSec : durSec;
   else d = (durSec != null && durSec > 0) ? durSec : durBeatSec;
@@ -2187,13 +2375,16 @@ function getBulletSpawnSec(n){
 }
 function getBulletToDockSec(n){
   const byBeats = $("#timeMode").value === "Beats";
-  if (byBeats) return (isFinite(n.bulletToDockBeats) ? beatsToSec(n.bulletToDockBeats) : (n.bulletToDockDuration||0));
-  return (isFinite(n.bulletToDockDuration) ? n.bulletToDockDuration : (isFinite(n.bulletToDockBeats) ? beatsToSec(n.bulletToDockBeats) : 0));
+  const startBeat = isFinite(n.bulletSpawnBeat) ? n.bulletSpawnBeat : (isFinite(n.bulletSpawnTime) ? tempoSecToBeat(n.bulletSpawnTime) : 0);
+  if (byBeats) return (isFinite(n.bulletToDockBeats) ? tempoDurationSec(startBeat, n.bulletToDockBeats) : (n.bulletToDockDuration||0));
+  return (isFinite(n.bulletToDockDuration) ? n.bulletToDockDuration : (isFinite(n.bulletToDockBeats) ? tempoDurationSec(startBeat, n.bulletToDockBeats) : 0));
 }
 function getBulletDockToDespawnSec(n){
   const byBeats = $("#timeMode").value === "Beats";
-  if (byBeats) return (isFinite(n.bulletDockToDespawnBeats) ? beatsToSec(n.bulletDockToDespawnBeats) : (n.bulletDockToDespawnDuration||0));
-  return (isFinite(n.bulletDockToDespawnDuration) ? n.bulletDockToDespawnDuration : (isFinite(n.bulletDockToDespawnBeats) ? beatsToSec(n.bulletDockToDespawnBeats) : 0));
+  const startBeat = isFinite(n.bulletSpawnBeat) ? n.bulletSpawnBeat : (isFinite(n.bulletSpawnTime) ? tempoSecToBeat(n.bulletSpawnTime) : 0);
+  const dockBeat = isFinite(n.bulletToDockBeats) ? startBeat + n.bulletToDockBeats : startBeat;
+  if (byBeats) return (isFinite(n.bulletDockToDespawnBeats) ? tempoDurationSec(dockBeat, n.bulletDockToDespawnBeats) : (n.bulletDockToDespawnDuration||0));
+  return (isFinite(n.bulletDockToDespawnDuration) ? n.bulletDockToDespawnDuration : (isFinite(n.bulletDockToDespawnBeats) ? tempoDurationSec(dockBeat, n.bulletDockToDespawnBeats) : 0));
 }
 
 /* ---------- Slider path helpers ---------- */
@@ -2254,7 +2445,7 @@ function addGrid(){
   // use preview/playhead time to set timing so note follows playhead
   const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
   const judgeTime = nowPlayback - computeOffsetSeconds();
-  const judgeBeat = (spb() > 0) ? snappedBeatsFromSec(nowPlayback) : num($("#judgeBeat").value);
+  const judgeBeat = snappedBeatsFromSec(nowPlayback);
   const noteType = $("#noteType").value;
 
   if (noteType === "Trail") {
@@ -2270,19 +2461,17 @@ function addGrid(){
   }
 
   if (noteType === "Long") {
+    const pressTime = isFinite(judgeTime) ? judgeTime : 0;
+    const pressBeat = isFinite(judgeBeat) ? judgeBeat : 0;
     let duration = Math.max(0, num($("#longDurSec").value));
     let durationBeats = Math.max(0, num($("#longDurBeats").value));
 
     if (duration <= 0 && durationBeats > 0) {
-      duration = beatsToSec(durationBeats);
+      duration = tempoDurationSec(pressBeat, durationBeats);
     }
     if (durationBeats <= 0 && duration > 0) {
-      const spbVal = spb();
-      if (spbVal > 0) durationBeats = duration / spbVal;
+      durationBeats = Math.max(0, tempoSecToBeat(pressTime + duration) - pressBeat);
     }
-
-    const pressTime = isFinite(judgeTime) ? judgeTime : 0;
-    const pressBeat = isFinite(judgeBeat) ? judgeBeat : 0;
 
     pushNote({
       type:"Long",
@@ -2305,7 +2494,7 @@ function addCircle(){
   if(editIndex!==null) return;
   const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
   const judgeTime = nowPlayback - computeOffsetSeconds();
-  const judgeBeat = (spb() > 0) ? snappedBeatsFromSec(nowPlayback) : num($("#circleJudgeBeat").value);
+  const judgeBeat = snappedBeatsFromSec(nowPlayback);
   const [xs,ys] = ($("#circlePos").value||"960,540").split(",");
   const x=clamp(parseFloat(xs||"960"),0,REF_W), y=clamp(parseFloat(ys||"540"),0,REF_H);
   pushNote({type:"CircleTap", absPos:{x,y}, judgeTime, judgeBeat});
@@ -2315,7 +2504,7 @@ function addSlider(){
   if(pathPtsAbs.length<2){ alert("Slider path needs at least 2 points"); return; }
   const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
   const startTime = nowPlayback - computeOffsetSeconds();
-  const startBeat = (spb() > 0) ? snappedBeatsFromSec(nowPlayback) : num($("#sliderStartBeat").value);
+  const startBeat = snappedBeatsFromSec(nowPlayback);
   const duration=num($("#sliderDurSec").value), durationBeats=num($("#sliderDurBeats").value);
   pushNote({type:"Slider", absPath: pathPtsAbs.map(p=>({x:Math.round(p.x),y:Math.round(p.y)})),
             startTime, startBeat, duration, durationBeats, sliderCurved: $("#sliderCurved")?.checked === true
@@ -2344,7 +2533,7 @@ function addBullet(){
   const desp  = parseAbsXY($("#bulletDespawn").value,"1728,540");
   const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
   const startSec = nowPlayback - computeOffsetSeconds();
-  const startBeat = (spb() > 0) ? snappedBeatsFromSec(nowPlayback) : num($("#bulletStartBeat").value);
+  const startBeat = snappedBeatsFromSec(nowPlayback);
   const toDockSec=num($("#bulletToDockSec").value), toDockBeats=num($("#bulletToDockBeats").value);
   const dockToDespawnSec=num($("#bulletDockToDespawnSec").value), dockToDespawnBeats=num($("#bulletDockToDespawnBeats").value);
     pushNote({
@@ -2375,7 +2564,7 @@ function addCamera(){
   // Use preview/playhead time as default start for newly added camera notes
   const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
   const startTime = nowPlayback - computeOffsetSeconds();
-  const startBeat = (spb() > 0) ? snappedBeatsFromSec(nowPlayback) : num($("#camStartBeat").value);
+  const startBeat = snappedBeatsFromSec(nowPlayback);
   const duration  = num($("#camDurSec").value);
   const durationBeats = num($("#camDurBeats").value);
 
@@ -2549,10 +2738,9 @@ function saveEdit(){
     const judgeTime = num($("#judgeTimeSec").value);
     const judgeBeat = num($("#judgeBeat").value);
 
-    if (duration <= 0 && durationBeats > 0) duration = beatsToSec(durationBeats);
+    if (duration <= 0 && durationBeats > 0) duration = tempoDurationSec(judgeBeat, durationBeats);
     if (durationBeats <= 0 && duration > 0) {
-      const spbVal = spb();
-      if (spbVal > 0) durationBeats = duration / spbVal;
+      durationBeats = Math.max(0, tempoSecToBeat(judgeTime + duration) - judgeBeat);
     }
 
     const pressTime = isFinite(judgeTime) ? judgeTime : 0;
@@ -2794,10 +2982,10 @@ function renderNotes(){
         const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.judgeBeat) ? n.judgeBeat : 0);
         const durSec = (isFinite(n.duration) && n.duration>0)
           ? n.duration
-          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (isFinite(n.judgeTime) ? n.judgeTime : startSec) - startSec));
+          : (isFinite(n.durationBeats) && n.durationBeats>0 ? tempoDurationSec(startBeat, n.durationBeats) : Math.max(0, (isFinite(n.judgeTime) ? n.judgeTime : startSec) - startSec));
         const durBeat = (isFinite(n.durationBeats) && n.durationBeats>0)
           ? n.durationBeats
-          : (()=>{ const spbVal = spb(); return (spbVal>0 && durSec>0) ? (durSec / spbVal) : Math.max(0, (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat) - startBeat); })();
+          : (durSec>0 ? Math.max(0, tempoSecToBeat(startSec + durSec) - startBeat) : Math.max(0, (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat) - startBeat));
         const relSec = (durSec>0) ? (startSec + durSec) : (isFinite(n.judgeTime) ? n.judgeTime : startSec);
         const relBeat = (durBeat>0) ? (startBeat + durBeat) : (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat);
         data=`cell=(${cell.x??"-"},${cell.y??"-"}) start=${fmt(startSec)}s/${fmt(startBeat)}b dur=${fmt(durSec)}s/${fmt(durBeat)}b release=${fmt(relSec)}s/${fmt(relBeat)}b`;
@@ -2842,10 +3030,10 @@ function renderNotes(){
         const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.judgeBeat) ? n.judgeBeat : 0);
         const durSec = (isFinite(n.duration) && n.duration>0)
           ? n.duration
-          : (isFinite(n.durationBeats) && n.durationBeats>0 ? beatsToSec(n.durationBeats) : Math.max(0, (isFinite(n.judgeTime) ? n.judgeTime : startSec) - startSec));
+          : (isFinite(n.durationBeats) && n.durationBeats>0 ? tempoDurationSec(startBeat, n.durationBeats) : Math.max(0, (isFinite(n.judgeTime) ? n.judgeTime : startSec) - startSec));
         const durBeat = (isFinite(n.durationBeats) && n.durationBeats>0)
           ? n.durationBeats
-          : (()=>{ const spbVal = spb(); return (spbVal>0 && durSec>0) ? (durSec / spbVal) : Math.max(0, (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat) - startBeat); })();
+          : (durSec>0 ? Math.max(0, tempoSecToBeat(startSec + durSec) - startBeat) : Math.max(0, (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat) - startBeat));
         const relSec = (durSec>0) ? (startSec + durSec) : (isFinite(n.judgeTime) ? n.judgeTime : startSec);
         const relBeat = (durBeat>0) ? (startBeat + durBeat) : (isFinite(n.judgeBeat) ? n.judgeBeat : startBeat);
         timeTxt=`start=${fmt(startSec)}/${fmt(startBeat)} | dur=${fmt(durSec)}/${fmt(durBeat)} | rel=${fmt(relSec)}/${fmt(relBeat)}`;
@@ -2928,7 +3116,7 @@ function moveDown(i){ if(i>=chart.notes.length-1) return; const it=chart.notes.s
 let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("draggable","true"); tr.addEventListener("dragstart",(e)=>{ dragIndex=idx; tr.style.opacity="0.5"; }); tr.addEventListener("dragend",()=>{ tr.style.opacity=""; dragIndex=null; }); tr.addEventListener("dragover",(e)=>{ e.preventDefault(); }); tr.addEventListener("drop",(e)=>{ e.preventDefault(); const targetIdx=parseInt(tr.dataset.index,10); if(dragIndex===null || dragIndex===targetIdx) return; const item=chart.notes.splice(dragIndex,1)[0]; chart.notes.splice(targetIdx,0,item); renderNotes(); }); }
 
 /* ---------- 정렬 & 시간 계산 ---------- */
-function spb(){ const bpm = num($("#bpm").value); return bpm>0 ? 60/bpm : 0; }
+function spb(){ return fixedSpb(); }
 function getNoteTimeSec(n){
   if ((n.type === "Grid" && n.isLong) || n.type === "Long"){
     return getLongStartSec(n);
@@ -2985,11 +3173,10 @@ function packIntoRows(intervals){
 
 
 function getNoteTimeBeats(n){
-  const S = spb();
   const byBeats = $("#timeMode").value === "Beats";
 
   const present = v => v != null && isFinite(v);
-  const beatsFromSec = (sec)=> present(sec) ? sec / (S||1) : null;
+  const beatsFromSec = (sec)=> present(sec) ? tempoSecToBeat(sec) : null;
   const pick = (primary, fallback)=> present(primary) ? primary : (present(fallback) ? fallback : 0);
   if (n.type === "Line"){
     const sec = n.timeSec, beat = n.timeBeat;
@@ -3016,14 +3203,15 @@ function getNoteTimeBeats(n){
 }
 function spawnSecOf(n){
   const gridTargetPx = resolveGridTargetPx();
-  const gridGrowSec  = resolveGridGrowPxPerSec();       // px/s
+  const startBeat = isFinite(n?.startBeat) ? n.startBeat : getNoteTimeBeats(n);
+  const gridGrowSec  = resolveGridGrowPxPerSec(startBeat);       // px/s
   const gridLeadSec  = gridTargetPx / gridGrowSec;      // s
 
   if ((n.type === "Grid" && n.isLong) || n.type === "Long")
     return getLongStartSec(n) - gridLeadSec;
   if (n.type === "Grid")      return getNoteTimeSec(n) - gridLeadSec;
- if (n.type === "CircleTap") return getNoteTimeSec(n) - resolveCircleLeadSec();
- if (n.type === "Slider")    return getNoteTimeSec(n) - resolveSliderLeadSec();
+ if (n.type === "CircleTap") return getNoteTimeSec(n) - resolveCircleLeadSecAtBeat(getNoteTimeBeats(n));
+ if (n.type === "Slider")    return getNoteTimeSec(n) - resolveSliderLeadSecAtBeat(startBeat);
   if (n.type === "Bullet")    return getNoteTimeSec(n);
   if (n.type === "Camera") return getCameraStartSec(n);
   if (n.type === "Line")      return getStyleStartSec(n);
@@ -3078,20 +3266,116 @@ function sortBySpawn(){ chart.notes.sort((a,b)=> spawnSecOf(a)-spawnSecOf(b)); r
 function reindexNotes(){ for(let i=0;i<chart.notes.length;i++){ chart.notes[i]._order=i; } renderNotes(); }
 
 /* ---------- Export/Import ---------- */
+function chartBeatFromTime(sec, beat){
+  if (isFinite(beat)) return beat;
+  if (isFinite(sec)) return tempoSecToBeat(sec);
+  return 0;
+}
+function chartDurationBeatsFromSec(startBeat, startSec, durationSec){
+  if (!isFinite(durationSec) || durationSec <= 0) return 0;
+  const baseBeat = isFinite(startBeat) ? startBeat : (isFinite(startSec) ? tempoSecToBeat(startSec) : 0);
+  const endBeat = tempoSecToBeat((startSec || 0) + durationSec);
+  return Math.max(0, endBeat - baseBeat);
+}
+function fixedTimeSecFromChart(sec, beat){
+  return fixedBeatToSec(chartBeatFromTime(sec, beat));
+}
+function fixedDurationSecFromChart(startBeat, startSec, durationBeats, durationSec){
+  const beats = (isFinite(durationBeats) && durationBeats > 0)
+    ? durationBeats
+    : chartDurationBeatsFromSec(startBeat, startSec, durationSec);
+  return Math.max(0, beats * fixedSpb());
+}
+function appendFixedTimes(n){
+  const out = { ...n };
+  if (!(fixedSpb() > 0)) return out;
+
+  if (n.type === "Line"){
+    out.fixedTimeSec = fixedTimeSecFromChart(n.timeSec, n.timeBeat);
+    const fadeBeats = (isFinite(n.fadeBeat) ? n.fadeBeat : (isFinite(n.fadebeat) ? n.fadebeat : undefined));
+    out.fixedFadeSec = fixedDurationSecFromChart(n.timeBeat, n.timeSec, fadeBeats, n.fadeSec);
+    return out;
+  }
+
+  if (n.type === "Bullet"){
+    const spawnBeat = chartBeatFromTime(n.bulletSpawnTime, n.bulletSpawnBeat);
+    out.fixedBulletSpawnTime = fixedBeatToSec(spawnBeat);
+    const toDockBeats = (isFinite(n.bulletToDockBeats) && n.bulletToDockBeats > 0)
+      ? n.bulletToDockBeats
+      : chartDurationBeatsFromSec(spawnBeat, n.bulletSpawnTime, n.bulletToDockDuration);
+    out.fixedBulletToDockDuration = Math.max(0, toDockBeats * fixedSpb());
+    const dockBeat = spawnBeat + toDockBeats;
+    const dockToDespawnBeats = (isFinite(n.bulletDockToDespawnBeats) && n.bulletDockToDespawnBeats > 0)
+      ? n.bulletDockToDespawnBeats
+      : chartDurationBeatsFromSec(dockBeat, n.bulletSpawnTime + (n.bulletToDockDuration || 0), n.bulletDockToDespawnDuration);
+    out.fixedBulletDockToDespawnDuration = Math.max(0, dockToDespawnBeats * fixedSpb());
+    return out;
+  }
+
+  if (n.type === "Slider"){
+    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
+    out.fixedStartTime = fixedBeatToSec(startBeat);
+    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
+    return out;
+  }
+
+  if (n.type === "Camera"){
+    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
+    out.fixedStartTime = fixedBeatToSec(startBeat);
+    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
+    return out;
+  }
+
+  if (n.type === "Voice"){
+    out.fixedStartTime = fixedTimeSecFromChart(n.startTime, n.startBeat);
+    return out;
+  }
+
+  if (n.type === "Image"){
+    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
+    out.fixedStartTime = fixedBeatToSec(startBeat);
+    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
+    return out;
+  }
+
+  if ((n.type === "Long") || (n.type === "Grid" && n.isLong)){
+    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
+    out.fixedStartTime = fixedBeatToSec(startBeat);
+    out.fixedJudgeTime = fixedTimeSecFromChart(n.judgeTime, n.judgeBeat);
+    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
+    return out;
+  }
+
+  if (n.type === "Grid" || n.type === "CircleTap"){
+    out.fixedJudgeTime = fixedTimeSecFromChart(n.judgeTime, n.judgeBeat);
+    return out;
+  }
+
+  if (isFinite(n.startTime) || isFinite(n.startBeat)){
+    out.fixedStartTime = fixedTimeSecFromChart(n.startTime, n.startBeat);
+  }
+  if (isFinite(n.timeSec) || isFinite(n.timeBeat)){
+    out.fixedTimeSec = fixedTimeSecFromChart(n.timeSec, n.timeBeat);
+  }
+  return out;
+}
 function levelChartJSON(){
   const fixedNotes = (chart.notes || []).map(n=>{
+    let out = n;
     if(n.type === "Line"){
       // 소문자 키가 있으면 끌어올림
       const fb = Number.isFinite(n.fadeBeat) ? n.fadeBeat
                : (Number.isFinite(n.fadebeat) ? n.fadebeat : undefined);
-      return { ...n, ...(fb !== undefined ? { fadeBeat: fb } : {}) };
+      out = { ...n, ...(fb !== undefined ? { fadeBeat: fb } : {}) };
     }
-    return n;
+    return appendFixedTimes(out);
   });
   const payload = {
     schemaVersion: 2,
     title: chart.title,
     bpm: chart.bpm,
+    tempoMapEnabled: !!chart.tempoMapEnabled,
+    tempoMap: normalizeTempoMap(chart.tempoMap, chart.bpm),
     timeMode: chart.timeMode,  // "Beats"/"Seconds" 그대로
     startOffset: chart.startOffset,
     startOffsetBeats: chart.startOffsetBeats,
@@ -3104,8 +3388,8 @@ function levelChartJSON(){
 // ───────── 시간/비트 변환 헬퍼 (기존 함수 재정의 없음) ─────────
 const J_EPS = 1e-6;
 
-function J_beatToSec(beat, bpm){ return (beat||0) * 60 / Math.max(1e-6, bpm||120); }
-function J_chartOffsetSec(chart){ return (chart?.startOffset||0) + J_beatToSec(chart?.startOffsetBeats||0, chart?.bpm||120); }
+function J_beatToSec(beat, bpm){ return tempoBeatToSec(beat||0); }
+function J_chartOffsetSec(chart){ return (chart?.startOffset||0) + tempoBeatToSec(chart?.startOffsetBeats||0); }
 
 // 가장 먼저 발견되는 "유효값" 반환(0은 유효로 취급)
 function J_firstValid(/* ...vals */){
@@ -3198,9 +3482,14 @@ $("#importFile").addEventListener("change",(e)=>{
       chart.title=obj.title||"Imported"; chart.bpm=obj.bpm||120;
       chart.timeMode=obj.timeMode||"Seconds";
       chart.startOffset=obj.startOffset||0; chart.startOffsetBeats=obj.startOffsetBeats||0;
+      chart.tempoMapEnabled = (obj.tempoMapEnabled !== undefined) ? !!obj.tempoMapEnabled : true;
+      chart.tempoMap = Array.isArray(obj.tempoMap) ? obj.tempoMap : [{ beat: 0, bpm: chart.bpm }];
       chart.notes=Array.isArray(obj.notes)?obj.notes:[];
       $("#title").value=chart.title; $("#bpm").value=chart.bpm; $("#timeMode").value=chart.timeMode;
       $("#startOffsetSec").value=chart.startOffset; $("#startOffsetBeats").value=chart.startOffsetBeats;
+      if ($("#tempoMapEnabled")) $("#tempoMapEnabled").checked = !!chart.tempoMapEnabled;
+      rebuildTempoCache();
+      renderTempoMapList();
       ensureCreatedAt(); renderNotes(); drawWave();buildStyleSchedule(); resetStyleCursor(0);
     }catch(err){ alert("JSON parse failed: "+err); }
   };
@@ -3241,10 +3530,12 @@ async function exportSongZip(){
     chartsFolder.file("Normal.chart.json", chartJson);
 
     // song.json
-const songMeta = {
+  const songMeta = {
   title,
   artist,
   bpm: num($("#bpm").value),
+  tempoMapEnabled: !!chart.tempoMapEnabled,
+  tempoMap: normalizeTempoMap(chart.tempoMap, num($("#bpm").value)),
   previewStart: num($("#previewStart")?.value || 0),
   previewDuration: num($("#previewDuration")?.value || 0),
   coverImage: "cover.jpg",
@@ -3297,7 +3588,6 @@ const KEY_PAN_FRAC_FAST   = 0.20; // ← Alt+Arrow: 20%
 const KEY_PAN_FRAC_SLOW   = 0.01; // ← Ctrl+Arrow: 1%
 
 let previewTimeSec = 0;  // 정지 중 커서가 보여줄 시각(초)
-let miniWindowStartSec = null;
 function isPlaying(){
   return (AC_enabled && !!AC_src) || (!AC_enabled && !audioEl.paused && !audioEl.ended);
 }
@@ -3851,13 +4141,13 @@ if (e.code && e.code.startsWith('Numpad')){
   const D = getDuration(); if (D <= 0) return;
 
   // Move preview cursor by snapped subdivision (no panning)
-  const bpm = num($("#bpm").value);
-  const subdiv = parseInt($("#subdiv").value || "8");
-  const spbVal = bpm > 0 ? 60 / bpm : 0;
-  const unitSec = (spbVal > 0 && subdiv > 0) ? (spbVal / subdiv) : 0.5;
+  const subdiv = Math.max(1, parseInt($("#subdiv").value || "8"));
   const dir = (e.key === "ArrowLeft") ? -1 : +1;
   const cur = (typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : (audioEl.currentTime || 0);
-  const target = Math.max(0, Math.min(getDuration(), cur + dir * unitSec));
+  const offset = computeOffsetSeconds();
+  const curBeat = tempoSecToBeat(cur - offset);
+  const targetBeat = curBeat + dir * (1 / subdiv);
+  const target = Math.max(0, Math.min(getDuration(), tempoBeatToSec(targetBeat) + offset));
   const snapped = snapTime(target);
   // If playing, seek; otherwise move previewTimeSec and refresh
   if (isPlaying()){
@@ -3918,9 +4208,8 @@ if (waveMiniCanvas){
     if (dur <= 0) return;
 
     const tNow = isPlaying() ? nowSecQms() : qms(previewTimeSec);
-    const bpm = num($("#bpm").value);
     const offset = computeOffsetSeconds();
-    const { miniStart, miniEnd } = getMiniWindowRange(tNow, bpm, offset);
+    const { miniStart, miniEnd } = getMiniWindowRange(tNow, offset);
     const span = (miniEnd - miniStart) || 1;
     const t = clamp(miniStart + (x / waveMiniCanvas.clientWidth) * span, 0, dur);
     const snapped = snapTime(t);
@@ -4012,9 +4301,9 @@ function drawWave(){
   wctx.clearRect(0,0,w,h); wctx.fillStyle="#0b0f1c"; wctx.fillRect(0,0,w,h);
   if(audioBuffer){ drawPeaksRange(wctx,w,h,audioBuffer,viewStart,viewEnd,ampScale); }
   else{ wctx.fillStyle="#9aa4bb"; wctx.fillText("오디오 파일을 선택하세요.", 10, h/2); }
-  const bpm=num($("#bpm").value); const duration=getDuration(), offset=computeOffsetSeconds();
+  const duration=getDuration(), offset=computeOffsetSeconds();
   drawTimeGrid(wctx,w,h,viewStart,viewEnd);
-  if(bpm>0 && duration>0){ drawBeatGrid(wctx,w,h,viewStart,viewEnd,bpm,offset,parseInt($("#subdiv").value||"8")); }
+  if(duration>0){ drawBeatGrid(wctx,w,h,viewStart,viewEnd,offset,parseInt($("#subdiv").value||"8")); }
   // 기존: const t = nowSecQms();
   const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
 
@@ -4061,29 +4350,27 @@ function drawWave(){
   drawWaveMini();
   updateWaveScrollbar();
 }
-function getMiniWindowRange(t, bpm, offset){
+function getMiniWindowRange(t, offset){
   let miniStart = viewStart;
   let miniEnd = viewEnd;
-  if (bpm > 0){
-    const spb = 60 / bpm;
-    const windowLen = spb * 8; // 두 마디(4/4 기준)
-    if (!isFinite(miniWindowStartSec) || miniWindowStartSec === null){
-      miniWindowStartSec = offset + Math.floor((t - offset) / windowLen) * windowLen;
-    }
-    if (t < miniWindowStartSec || t >= (miniWindowStartSec + windowLen)){
-      miniWindowStartSec = offset + Math.floor((t - offset) / windowLen) * windowLen;
-    }
-    miniStart = miniWindowStartSec;
-    miniEnd = miniWindowStartSec + windowLen;
+  const windowBeats = 8; // 두 마디(4/4 기준)
+  const relSec = t - offset;
+  const beatNow = tempoSecToBeat(relSec);
+  const windowStartBeat = Math.floor(beatNow / windowBeats) * windowBeats;
+  const startSec = tempoBeatToSec(windowStartBeat) + offset;
+  const endSec = tempoBeatToSec(windowStartBeat + windowBeats) + offset;
+  if (isFinite(startSec) && isFinite(endSec)){
+    miniStart = startSec;
+    miniEnd = endSec;
     const duration = getDuration();
     if (duration > 0){
       if (miniEnd > duration){
         miniEnd = duration;
-        miniStart = Math.max(0, miniEnd - windowLen);
+        miniStart = Math.max(0, miniEnd - (endSec - startSec));
       }
       if (miniStart < 0){
         miniStart = 0;
-        miniEnd = Math.min(duration, miniStart + windowLen);
+        miniEnd = Math.min(duration, miniStart + (endSec - startSec));
       }
     }
   }
@@ -4094,9 +4381,8 @@ function drawWaveMini(){
   const w=waveMiniCanvas.clientWidth, h=waveMiniCanvas.clientHeight;
   wctxMini.clearRect(0,0,w,h); wctxMini.fillStyle="#0b0f1c"; wctxMini.fillRect(0,0,w,h);
   const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
-  const bpm = num($("#bpm").value);
   const offset = computeOffsetSeconds();
-  const { miniStart, miniEnd } = getMiniWindowRange(t, bpm, offset);
+  const { miniStart, miniEnd } = getMiniWindowRange(t, offset);
 
   if(audioBuffer){ drawPeaksRangeMini(wctxMini,w,h,audioBuffer,miniStart,miniEnd,ampScale); }
   else{ wctxMini.fillStyle="#9aa4bb"; wctxMini.fillText("오디오 파일을 선택하세요.", 8, h/2); }
@@ -4104,29 +4390,25 @@ function drawWaveMini(){
     const span=(miniEnd-miniStart)||1;
     return ((time-miniStart)/span)*w;
   };
-  if (bpm > 0) {
-    drawMiniBeatGrid(wctxMini, w, h, miniStart, miniEnd, bpm, offset, mapX);
-  }
+  drawMiniBeatGrid(wctxMini, w, h, miniStart, miniEnd, offset, mapX);
   if(t>=miniStart && t<=miniEnd){
     const x=mapX(t); wctxMini.strokeStyle="#ffd48a"; wctxMini.lineWidth=2; wctxMini.beginPath(); wctxMini.moveTo(x,0); wctxMini.lineTo(x,h); wctxMini.stroke();
   }
 }
-function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, bpm, off, mapX){
-  const spb = 60 / bpm;
-  let bi = Math.floor((vStart - off) / spb) - 1;
-  for(;;bi++){
-    const t = off + bi * spb;
-    if(t > vEnd) break;
-    if(t >= vStart){
-      const x = mapX(t);
-      const bar = (bi % 4 === 0);
-      ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
-      ctx.lineWidth = bar ? 2 : 1;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
+function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, off, mapX){
+  const startBeat = Math.floor(tempoSecToBeat(vStart - off)) - 1;
+  const endBeat = Math.ceil(tempoSecToBeat(vEnd - off)) + 1;
+  for (let bi = startBeat; bi <= endBeat; bi++){
+    const t = tempoBeatToSec(bi) + off;
+    if (t < vStart || t > vEnd) continue;
+    const x = mapX(t);
+    const bar = (bi % 4 === 0);
+    ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
+    ctx.lineWidth = bar ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
   }
 }
 function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
@@ -4292,25 +4574,23 @@ function drawTimeGrid(ctx,w,h,vStart,vEnd,mapX=timeToX){
     if(major){ ctx.fillStyle="#9aa4bb"; ctx.fillText(`${s.toFixed(0)}s`, Math.max(2,x+2), 12); }
   }
 }
-function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv,mapX=timeToX){
-  const spb=60/bpm; const span=vEnd-vStart; const pxPerSec = (span>0)?(w/span):0;
-  let bi=Math.floor((vStart-off)/spb)-1;
-  for(;;bi++){
-    const t=off+bi*spb; if(t>vEnd) break;
-    if(t>=vStart){
-      const x=mapX(t); const bar=(bi%4===0);
-      // Measure (bar) lines are thicker; quarter-note (beat) lines are thinner
-      ctx.strokeStyle = bar ? "#66d9ef" : "#265a6d";
-      ctx.lineWidth = bar ? 3 : 1.5;
-      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
-      if(bar){ ctx.fillStyle="#b9c2d9"; ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2,x+2), h-6); }
-    }
+function drawBeatGrid(ctx,w,h,vStart,vEnd,off,subdiv,mapX=timeToX){
+  const span=vEnd-vStart; const pxPerSec = (span>0)?(w/span):0;
+  const startBeat = Math.floor(tempoSecToBeat(vStart - off)) - 1;
+  const endBeat = Math.ceil(tempoSecToBeat(vEnd - off)) + 1;
+  for(let bi=startBeat; bi<=endBeat; bi++){
+    const t=tempoBeatToSec(bi) + off;
+    if(t < vStart || t > vEnd) continue;
+    const x=mapX(t); const bar=(bi%4===0);
+    ctx.strokeStyle = bar ? "#66d9ef" : "#265a6d";
+    ctx.lineWidth = bar ? 3 : 1.5;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+    if(bar){ ctx.fillStyle="#b9c2d9"; ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2,x+2), h-6); }
     if(subdiv && subdiv>1){
-      // Skip drawing very dense subdivision lines for performance/clarity
-      const subPx = pxPerSec * (spb / subdiv);
-      if(subPx < 3) continue;
+      if(pxPerSec <= 0) continue;
       for(let k=1;k<subdiv;k++){
-        const tk=t+k*spb/subdiv; if(tk<vStart||tk>vEnd) continue;
+        const subBeat = bi + (k / subdiv);
+        const tk=tempoBeatToSec(subBeat) + off; if(tk<vStart||tk>vEnd) continue;
         const xk=mapX(tk);
         ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1;
         ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke();
@@ -4319,27 +4599,24 @@ function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv,mapX=timeToX){
   }
 }
 
-// === Beat/Sec conversion helpers (추가) ===
-function spb(){                 // 1 beat = ? sec
-  const bpm = num($("#bpm").value);
-  return bpm > 0 ? 60 / bpm : 0;
-}
-function beatsToSec(beats){ return beats * spb(); }
-function secToBeats(sec){ const s = spb(); return s>0 ? sec / s : 0; }
+// === Beat/Sec conversion helpers (tempo map aware) ===
+function spb(){ return fixedSpb(); } // backward-compatible wrapper
+function beatsToSec(beats){ return tempoBeatToSec(beats); }
+function secToBeats(sec){ return tempoSecToBeat(sec); }
 
-// === Lead seconds resolver (추가) ===
+// === Lead seconds resolver (tempo map aware) ===
 // Circle/Slider 리드는 timeMode에 따라 beats 또는 seconds 해석
-function resolveCircleLeadSec(){
+function resolveCircleLeadSecAtBeat(beat){
   if ($("#timeMode").value === "Beats") {
     const b = num($("#circleLeadBeats").value);
-    if (b > 0) return beatsToSec(b);
+    if (b > 0) return tempoDurationSec(beat, b);
   }
   return num($("#circleLead").value); // seconds fallback
 }
-function resolveSliderLeadSec(){
+function resolveSliderLeadSecAtBeat(beat){
   if ($("#timeMode").value === "Beats") {
     const b = num($("#sliderLeadBeats").value);
-    if (b > 0) return beatsToSec(b);
+    if (b > 0) return tempoDurationSec(beat, b);
   }
   return num($("#sliderLead").value); // seconds fallback
 }
@@ -4347,11 +4624,11 @@ function resolveSliderLeadSec(){
 // === Grid grow speed resolver (추가) ===
 // gridGrowUnit=pxps → 그대로(px/s)
 // gridGrowUnit=pxpbeat → px/s 로 변환(px/beat × BPM/60)
-function resolveGridGrowPxPerSec(){
+function resolveGridGrowPxPerSec(beat=0){
   const grow = num($("#gridGrow").value);
   const unit = $("#gridGrowUnit")?.value || "pxps";
   if (unit === "pxpbeat") {
-    const bpm = num($("#bpm").value);
+    const bpm = tempoBpmAtBeat(beat);
     return grow * (bpm / 60); // px/s
   }
   return grow; // px/s
@@ -4374,24 +4651,22 @@ function cellToAbsPos(c, r) {
 }
 
 function beatInfoAt(t){
-  const bpm=num($("#bpm").value); if(bpm<=0) return {valid:false,text:"-"};
-  const spb=60/bpm, off=computeOffsetSeconds(); const beats=(t-off)/spb;
+  const off=computeOffsetSeconds(); const beats=tempoSecToBeat(t - off);
   const bar=Math.floor(beats/4)+1, inBar=beats-(bar-1)*4, bnum=Math.floor(inBar)+1, frac=inBar-Math.floor(inBar);
   return {valid:true, text:`${beats.toFixed(3)} (M${bar}, B${bnum}${frac>0?`+${frac.toFixed(3)}`:""})`};
 }
 function computeOffsetSeconds(){
-  const bpm=num($("#bpm").value); const byBeats=$("#timeMode").value==="Beats";
-  if(byBeats && bpm>0){ const beats=num($("#startOffsetBeats").value); return beats*(60/bpm); }
+  const byBeats=$("#timeMode").value==="Beats";
+  if(byBeats){ const beats=num($("#startOffsetBeats").value); return tempoBeatToSec(beats); }
   return num($("#startOffsetSec").value);
 }
 function applyTimeFromWave(t0, t1){
   console.debug("[DBG] applyTimeFromWave.in", {t0, t1});
   if (!Number.isFinite(t0)) return;
 
-  const S   = spb();                     // sec per beat
   const off = computeOffsetSeconds();    // chart offset (sec)
 
-  const toBeatsUI = (secPlayback) => (S > 0 ? (secPlayback - off) / S : 0);
+  const toBeatsUI = (secPlayback) => tempoSecToBeat(secPlayback - off);
   const snap1ms   = (t) => snapTime(t);       // 1ms 양자화
 
   // ✅ 인자 이름과 본문 변수 통일 (secPlayback 사용)
@@ -4399,23 +4674,23 @@ function applyTimeFromWave(t0, t1){
     const typ = $("#noteType").value;
     const secMusical = secPlayback - off;                // UI의 "sec"은 음악적 시각으로 표기
     const secStr     = qms(secMusical).toFixed(3);
-    const beatStr    = (S>0 ? snappedBeatsFromSec(secPlayback).toFixed(3) : "0.000");
+    const beatStr    = snappedBeatsFromSec(secPlayback).toFixed(3);
 
     if (typ === "Grid") {
       $("#judgeTimeSec").value = secStr;
-      if (S>0) $("#judgeBeat").value = beatStr;
+      $("#judgeBeat").value = beatStr;
     } else if (typ === "CircleTap") {
       $("#circleJudgeSec").value = secStr;
-      if (S>0) $("#circleJudgeBeat").value = beatStr;
+      $("#circleJudgeBeat").value = beatStr;
     } else if (typ === "Slider") {
       $("#sliderStartSec").value = secStr;
-      if (S>0) $("#sliderStartBeat").value = beatStr;
+      $("#sliderStartBeat").value = beatStr;
     } else if (typ === "Bullet") {
       $("#bulletStartSec").value = secStr;
-      if (S>0) $("#bulletStartBeat").value = beatStr;
+      $("#bulletStartBeat").value = beatStr;
     } else if (typ === "Camera") {
       $("#camStartSec").value = secStr;
-      if (S>0) $("#camStartBeat").value = beatStr;
+      $("#camStartBeat").value = beatStr;
     }
   }
 
@@ -4429,17 +4704,13 @@ function applyTimeFromWave(t0, t1){
     if (typ === "Slider") {
       $("#sliderStartSec").value = aMus.toFixed(3);
       $("#sliderDurSec").value   = dS.toFixed(3);
-      if (S>0){
-        $("#sliderStartBeat").value = snappedBeatsFromSec(aS).toFixed(3);
-        $("#sliderDurBeats").value  = (snappedBeatsFromSec(bS) - snappedBeatsFromSec(aS)).toFixed(3);
-      }
+      $("#sliderStartBeat").value = snappedBeatsFromSec(aS).toFixed(3);
+      $("#sliderDurBeats").value  = (snappedBeatsFromSec(bS) - snappedBeatsFromSec(aS)).toFixed(3);
     } else if (typ === "Camera") {
       $("#camStartSec").value = aMus.toFixed(3);
       $("#camDurSec").value   = dS.toFixed(3);
-      if (S>0){
-        $("#camStartBeat").value = qms(toBeatsUI(aS)).toFixed(3);
-        $("#camDurBeats").value  = qms(dS / S).toFixed(3);
-      }
+      $("#camStartBeat").value = qms(toBeatsUI(aS)).toFixed(3);
+      $("#camDurBeats").value  = qms(Math.max(0, tempoSecToBeat(aS + dS) - tempoSecToBeat(aS))).toFixed(3);
     } else {
       // 나머지 타입은 단일 시점 → 위 함수 재사용
       fillSingleTime(aS);
@@ -4468,19 +4739,15 @@ function applyTimeFromWave(t0, t1){
 function snapTime(t){
   if (!$("#snap").checked) return t;
 
-  const bpm = num($("#bpm").value);
-  if (bpm <= 0) return t;
-
   const subdiv = parseInt($("#subdiv").value || "8");
-  const spb    = 60 / bpm;                 // seconds per beat
   const off    = computeOffsetSeconds();
 
   // 현재 시간을 오프셋 기준 비트 좌표로 옮김
-  const relBeats = (t - off) / spb;
+  const relBeats = tempoSecToBeat(t - off);
 
   // ★정수 격자(k/subdiv)에 스냅 (부동소수 출력 없음)
   const k = Math.round(relBeats * subdiv); // integer grid index
-  const snappedSec = off + (k * spb) / subdiv;
+  const snappedSec = off + tempoBeatToSec(k / subdiv);
 
   return snappedSec; // 절대초(플레이백 좌표)
 }
@@ -4495,14 +4762,12 @@ function redrawBeat(){
 }
 
 function snappedBeatsFromSec(secPlayback){
-  const bpm = num($("#bpm").value);
-  const spb = (bpm > 0) ? 60 / bpm : 0;
   const off = computeOffsetSeconds();
   const subdiv = parseInt($("#subdiv").value || "8");
-  if (spb <= 0 || subdiv <= 0) return 0;
+  if (subdiv <= 0) return 0;
 
   // sec → 비트 좌표 → k 정수 → k/subdiv 로 복원
-  const rel = (secPlayback - off) / spb;
+  const rel = tempoSecToBeat(secPlayback - off);
   const k   = Math.round(rel * subdiv);
   return k / subdiv; // 정확한 비트(분수)
 }
@@ -4611,7 +4876,6 @@ function offsetSec(){ return computeOffsetSeconds() || 0; }
 
 function chartTimeToPlaybackSec({sec=null, beat=null}) {
   const byBeats = ($("#timeMode").value === "Beats");
-  const S = spb(); // sec per beat
   const present = v => v != null && isFinite(v);
 
   // timeMode에 따라 “우선값”을 정하고, 없으면 다른 축을 환산
@@ -4672,8 +4936,9 @@ function getCameraStartSec(n){
 }
 function getCameraDurationSec(n){
   const byBeats = ($("#timeMode").value === "Beats");
-  if (byBeats) return isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : (n.duration || 0);
-  return isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? beatsToSec(n.durationBeats) : 0);
+  const startBeat = isFinite(n.startBeat) ? n.startBeat : (isFinite(n.startTime) ? tempoSecToBeat(n.startTime) : 0);
+  if (byBeats) return isFinite(n.durationBeats) ? tempoDurationSec(startBeat, n.durationBeats) : (n.duration || 0);
+  return isFinite(n.duration) ? n.duration : (isFinite(n.durationBeats) ? tempoDurationSec(startBeat, n.durationBeats) : 0);
 }
 
 // nowSec 시점의 카메라 상태를 순차 시뮬로 계산 (이벤트 체이닝 반영)
@@ -4929,6 +5194,8 @@ function firstLayout(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
 
   buildGrid();
+  rebuildTempoCache();
+  renderTempoMapList();
   // ★ 테이블 먼저
   renderNotes();
   // 그 다음 그리기들
