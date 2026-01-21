@@ -4053,8 +4053,29 @@ function drawWaveMini(){
     const span=(miniEnd-miniStart)||1;
     return ((time-miniStart)/span)*w;
   };
+  if (bpm > 0) {
+    drawMiniBeatGrid(wctxMini, w, h, miniStart, miniEnd, bpm, offset, mapX);
+  }
   if(t>=miniStart && t<=miniEnd){
     const x=mapX(t); wctxMini.strokeStyle="#ffd48a"; wctxMini.lineWidth=2; wctxMini.beginPath(); wctxMini.moveTo(x,0); wctxMini.lineTo(x,h); wctxMini.stroke();
+  }
+}
+function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, bpm, off, mapX){
+  const spb = 60 / bpm;
+  let bi = Math.floor((vStart - off) / spb) - 1;
+  for(;;bi++){
+    const t = off + bi * spb;
+    if(t > vEnd) break;
+    if(t >= vStart){
+      const x = mapX(t);
+      const bar = (bi % 4 === 0);
+      ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
+      ctx.lineWidth = bar ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
   }
 }
 function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
