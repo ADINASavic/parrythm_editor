@@ -59,6 +59,12 @@
   .tempo-row .tempo-beat{width:90px}
   .tempo-row .tempo-bpm{width:90px}
   .tempo-row button{padding:4px 8px}
+  .time-sig-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .time-sig-row input{width:90px}
+  .time-sig-row .sig-beat{width:90px}
+  .time-sig-row .sig-num{width:70px}
+  .time-sig-row .sig-den{width:70px}
+  .time-sig-row button{padding:4px 8px}
   #orderToolbar{gap:8px;align-items:center;margin:6px 0}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .collapseBtn{background:transparent;border:1px solid #2d3653;color:var(--muted);padding:2px 6px;border-radius:6px;font-size:12px;cursor:pointer}
@@ -358,6 +364,12 @@
       <button id="tempoAddBtn" type="button">Add</button>
     </div>
     <div id="tempoMapList"></div>
+    <div class="row">
+      <label>Time Signature</label>
+      <label class="mini"><input id="timeSigMapEnabled" type="checkbox" checked> Enable</label>
+      <button id="timeSigAddBtn" type="button">Add</button>
+    </div>
+    <div id="timeSigMapList"></div>
     <div class="hint">Editor preview/beat grid uses this map. Export keeps fixed BPM and also saves map in song.json.</div>
     <div class="row"><label>Time Mode</label>
       <select id="timeMode"><option value="Seconds">Seconds</option><option value="Beats">Beats</option></select>
@@ -1024,9 +1036,12 @@ let chart = {
   startOffset:0, startOffsetBeats:0,
   tempoMapEnabled: true,
   tempoMap: [{ beat: 0, bpm: 120 }],
+  timeSigMapEnabled: true,
+  timeSigMap: [{ beat: 0, numerator: 4, denominator: 4 }],
   notes:[]
 };
 let tempoCache = { entries: [{ beat: 0, bpm: 120, secAtBeat: 0 }] };
+let timeSigCache = { entries: [{ beat: 0, numerator: 4, denominator: 4 }] };
 
 function fixedBpm(){ return num($("#bpm").value); }
 function fixedSpb(){ const bpm = fixedBpm(); return bpm > 0 ? 60 / bpm : 0; }
@@ -1041,6 +1056,20 @@ function normalizeTempoMap(map, baseBpm){
   if (cleaned.length === 0) return [{ beat: 0, bpm: baseBpm }];
   if (cleaned[0].beat > 0) cleaned.unshift({ beat: 0, bpm: baseBpm });
   if (cleaned[0].beat === 0 && !(cleaned[0].bpm > 0)) cleaned[0].bpm = baseBpm;
+  return cleaned;
+}
+
+function normalizeTimeSigMap(map){
+  const cleaned = (Array.isArray(map) ? map : [])
+    .map(e => ({
+      beat: Number(e?.beat ?? 0),
+      numerator: Math.max(1, Math.floor(Number(e?.numerator ?? 4))),
+      denominator: Math.max(1, Math.floor(Number(e?.denominator ?? 4)))
+    }))
+    .filter(e => isFinite(e.beat) && isFinite(e.numerator) && isFinite(e.denominator))
+    .sort((a,b)=> a.beat - b.beat);
+  if (cleaned.length === 0) return [{ beat: 0, numerator: 4, denominator: 4 }];
+  if (cleaned[0].beat > 0) cleaned.unshift({ beat: 0, numerator: 4, denominator: 4 });
   return cleaned;
 }
 
@@ -1062,6 +1091,15 @@ function rebuildTempoCache(){
     return out;
   });
   tempoCache = { entries: withSec };
+}
+
+function rebuildTimeSigCache(){
+  const enabled = !!$("#timeSigMapEnabled")?.checked;
+  chart.timeSigMapEnabled = enabled;
+  const entries = enabled
+    ? normalizeTimeSigMap(chart.timeSigMap)
+    : [{ beat: 0, numerator: 4, denominator: 4 }];
+  timeSigCache = { entries };
 }
 
 function tempoEntries(){ return tempoCache?.entries || [{ beat: 0, bpm: fixedBpm(), secAtBeat: 0 }]; }
@@ -1113,6 +1151,57 @@ function tempoDurationSec(startBeat, durationBeats){
   return Math.max(0, tempoBeatToSec(baseBeat + durationBeats) - tempoBeatToSec(baseBeat));
 }
 
+function timeSigEntries(){
+  return timeSigCache?.entries || [{ beat: 0, numerator: 4, denominator: 4 }];
+}
+function timeSigAtBeat(beat){
+  const entries = timeSigEntries();
+  if (!isFinite(beat)) return entries[0];
+  let current = entries[0];
+  for (const entry of entries){
+    if (entry.beat <= beat) current = entry;
+    else break;
+  }
+  return current;
+}
+function beatsPerBar(entry){
+  const numerator = entry?.numerator ?? 4;
+  const denominator = entry?.denominator ?? 4;
+  return numerator * (4 / Math.max(1, denominator));
+}
+function barInfoAtBeat(beat){
+  const entries = timeSigEntries();
+  let bars = 0;
+  for (let i = 0; i < entries.length; i++){
+    const entry = entries[i];
+    const next = entries[i + 1];
+    const nextBeat = next ? next.beat : Infinity;
+    const bpb = beatsPerBar(entry);
+    if (beat < entry.beat) return { barIndex: 0, barStart: 0, beatInBar: beat, timeSig: entries[0], beatsPerBar: beatsPerBar(entries[0]) };
+    if (beat < nextBeat){
+      const rel = beat - entry.beat;
+      const barsInRegion = Math.floor(rel / bpb);
+      const barStart = entry.beat + barsInRegion * bpb;
+      return {
+        barIndex: bars + barsInRegion,
+        barStart,
+        beatInBar: beat - barStart,
+        timeSig: entry,
+        beatsPerBar: bpb
+      };
+    }
+    const span = Math.max(0, nextBeat - entry.beat);
+    const barsInRegion = Math.floor(span / bpb);
+    bars += barsInRegion;
+  }
+  const fallback = entries[entries.length - 1];
+  const bpb = beatsPerBar(fallback);
+  const rel = beat - fallback.beat;
+  const barsInRegion = Math.floor(rel / bpb);
+  const barStart = fallback.beat + barsInRegion * bpb;
+  return { barIndex: bars + barsInRegion, barStart, beatInBar: beat - barStart, timeSig: fallback, beatsPerBar: bpb };
+}
+
 function renderTempoMapList(){
   const list = $("#tempoMapList");
   if (!list) return;
@@ -1161,6 +1250,55 @@ function renderTempoMapList(){
   });
 }
 
+function renderTimeSigMapList(){
+  const list = $("#timeSigMapList");
+  if (!list) return;
+  const map = normalizeTimeSigMap(chart.timeSigMap);
+  chart.timeSigMap = map;
+  list.innerHTML = "";
+  map.forEach((entry, idx) => {
+    const row = document.createElement("div");
+    row.className = "time-sig-row";
+    row.innerHTML = `
+      <span class="pill">#${idx+1}</span>
+      <label class="mini">Beat</label>
+      <input class="sig-beat" type="number" step="0.001" value="${entry.beat}">
+      <label class="mini">Sig</label>
+      <input class="sig-num" type="number" step="1" min="1" value="${entry.numerator}">
+      <span>/</span>
+      <input class="sig-den" type="number" step="1" min="1" value="${entry.denominator}">
+      <button type="button" class="bad">Remove</button>
+    `;
+    const beatInput = row.querySelector(".sig-beat");
+    const numInput = row.querySelector(".sig-num");
+    const denInput = row.querySelector(".sig-den");
+    const removeBtn = row.querySelector("button.bad");
+    const updateEntry = () => {
+      entry.beat = num(beatInput.value);
+      entry.numerator = Math.max(1, Math.floor(num(numInput.value)));
+      entry.denominator = Math.max(1, Math.floor(num(denInput.value)));
+      chart.timeSigMap = map;
+      rebuildTimeSigCache();
+      renderTimeSigMapList();
+      drawWave(); drawView(); redrawBeat();
+      pushHistory();
+    };
+    beatInput?.addEventListener("change", updateEntry);
+    numInput?.addEventListener("change", updateEntry);
+    denInput?.addEventListener("change", updateEntry);
+    removeBtn?.addEventListener("click", () => {
+      if (map.length <= 1) return;
+      map.splice(idx, 1);
+      chart.timeSigMap = map;
+      rebuildTimeSigCache();
+      renderTimeSigMapList();
+      drawWave(); drawView(); redrawBeat();
+      pushHistory();
+    });
+    list.appendChild(row);
+  });
+}
+
 function addTempoMapPoint(){
   const map = normalizeTempoMap(chart.tempoMap, fixedBpm());
   const last = map[map.length - 1];
@@ -1169,6 +1307,17 @@ function addTempoMapPoint(){
   chart.tempoMap = map;
   rebuildTempoCache();
   renderTempoMapList();
+  drawWave(); drawView(); redrawBeat();
+  pushHistory();
+}
+function addTimeSigMapPoint(){
+  const map = normalizeTimeSigMap(chart.timeSigMap);
+  const last = map[map.length - 1];
+  const nextBeat = isFinite(last?.beat) ? last.beat + 4 : 0;
+  map.push({ beat: nextBeat, numerator: last?.numerator || 4, denominator: last?.denominator || 4 });
+  chart.timeSigMap = map;
+  rebuildTimeSigCache();
+  renderTimeSigMapList();
   drawWave(); drawView(); redrawBeat();
   pushHistory();
 }
@@ -1203,9 +1352,13 @@ function applySnapshot(snap){
     try{ if (document.getElementById('startOffsetSec')) document.getElementById('startOffsetSec').value = chart.startOffset || 0; }catch(e){}
     try{ if (document.getElementById('startOffsetBeats')) document.getElementById('startOffsetBeats').value = chart.startOffsetBeats || 0; }catch(e){}
     try{ if (document.getElementById('tempoMapEnabled')) document.getElementById('tempoMapEnabled').checked = !!chart.tempoMapEnabled; }catch(e){}
+    try{ if (document.getElementById('timeSigMapEnabled')) document.getElementById('timeSigMapEnabled').checked = !!chart.timeSigMapEnabled; }catch(e){}
     chart.tempoMap = Array.isArray(chart.tempoMap) ? chart.tempoMap : [{ beat: 0, bpm: chart.bpm || 120 }];
+    chart.timeSigMap = Array.isArray(chart.timeSigMap) ? chart.timeSigMap : [{ beat: 0, numerator: 4, denominator: 4 }];
     rebuildTempoCache();
     renderTempoMapList();
+    rebuildTimeSigCache();
+    renderTimeSigMapList();
     ensureCreatedAt(); renderNotes(); if(typeof buildStyleSchedule==='function') buildStyleSchedule(); resetStyleCursor(getPreviewNowSec()); drawWave(); drawView();
   }catch(err){ console.warn('applySnapshot failed', err); }
   historyLock = false;
@@ -1255,6 +1408,15 @@ $("#tempoMapEnabled")?.addEventListener("change", () => {
   pushHistory();
 });
 $("#tempoAddBtn")?.addEventListener("click", addTempoMapPoint);
+$("#timeSigMapEnabled")?.addEventListener("change", () => {
+  rebuildTimeSigCache();
+  renderTimeSigMapList();
+  redrawBeat();
+  drawWave();
+  drawView();
+  pushHistory();
+});
+$("#timeSigAddBtn")?.addEventListener("click", addTimeSigMapPoint);
 $("#timeMode").addEventListener("change", e=> { chart.timeMode = e.target.value; redrawBeat(); });
 $("#startOffsetSec").addEventListener("input", e=> { chart.startOffset = num(e.target.value); redrawBeat(); });
 $("#startOffsetBeats").addEventListener("input", e=> { chart.startOffsetBeats = num(e.target.value); redrawBeat(); });
@@ -3392,6 +3554,8 @@ function levelChartJSON(){
     bpm: chart.bpm,
     tempoMapEnabled: !!chart.tempoMapEnabled,
     tempoMap: normalizeTempoMap(chart.tempoMap, chart.bpm),
+    timeSigMapEnabled: !!chart.timeSigMapEnabled,
+    timeSigMap: normalizeTimeSigMap(chart.timeSigMap),
     timeMode: chart.timeMode,  // "Beats"/"Seconds" 그대로
     startOffset: chart.startOffset,
     startOffsetBeats: chart.startOffsetBeats,
@@ -3500,12 +3664,17 @@ $("#importFile").addEventListener("change",(e)=>{
       chart.startOffset=obj.startOffset||0; chart.startOffsetBeats=obj.startOffsetBeats||0;
       chart.tempoMapEnabled = (obj.tempoMapEnabled !== undefined) ? !!obj.tempoMapEnabled : true;
       chart.tempoMap = Array.isArray(obj.tempoMap) ? obj.tempoMap : [{ beat: 0, bpm: chart.bpm }];
+      chart.timeSigMapEnabled = (obj.timeSigMapEnabled !== undefined) ? !!obj.timeSigMapEnabled : true;
+      chart.timeSigMap = Array.isArray(obj.timeSigMap) ? obj.timeSigMap : [{ beat: 0, numerator: 4, denominator: 4 }];
       chart.notes=Array.isArray(obj.notes)?obj.notes:[];
       $("#title").value=chart.title; $("#bpm").value=chart.bpm; $("#timeMode").value=chart.timeMode;
       $("#startOffsetSec").value=chart.startOffset; $("#startOffsetBeats").value=chart.startOffsetBeats;
       if ($("#tempoMapEnabled")) $("#tempoMapEnabled").checked = !!chart.tempoMapEnabled;
+      if ($("#timeSigMapEnabled")) $("#timeSigMapEnabled").checked = !!chart.timeSigMapEnabled;
       rebuildTempoCache();
       renderTempoMapList();
+      rebuildTimeSigCache();
+      renderTimeSigMapList();
       ensureCreatedAt(); renderNotes(); drawWave();buildStyleSchedule(); resetStyleCursor(0);
     }catch(err){ alert("JSON parse failed: "+err); }
   };
@@ -3552,6 +3721,8 @@ async function exportSongZip(){
   bpm: num($("#bpm").value),
   tempoMapEnabled: !!chart.tempoMapEnabled,
   tempoMap: normalizeTempoMap(chart.tempoMap, num($("#bpm").value)),
+  timeSigMapEnabled: !!chart.timeSigMapEnabled,
+  timeSigMap: normalizeTimeSigMap(chart.timeSigMap),
   previewStart: num($("#previewStart")?.value || 0),
   previewDuration: num($("#previewDuration")?.value || 0),
   coverImage: "cover.jpg",
@@ -4369,10 +4540,11 @@ function drawWave(){
 function getMiniWindowRange(t, offset){
   let miniStart = viewStart;
   let miniEnd = viewEnd;
-  const windowBeats = 8; // 두 마디(4/4 기준)
   const relSec = t - offset;
   const beatNow = tempoSecToBeat(relSec);
-  const windowStartBeat = Math.floor(beatNow / windowBeats) * windowBeats;
+  const info = barInfoAtBeat(beatNow);
+  const windowBeats = info.beatsPerBar * 2;
+  const windowStartBeat = info.barStart;
   const startSec = tempoBeatToSec(windowStartBeat) + offset;
   const endSec = tempoBeatToSec(windowStartBeat + windowBeats) + offset;
   if (isFinite(startSec) && isFinite(endSec)){
@@ -4418,7 +4590,8 @@ function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, off, mapX){
     const t = tempoBeatToSec(bi) + off;
     if (t < vStart || t > vEnd) continue;
     const x = mapX(t);
-    const bar = (bi % 4 === 0);
+    const barInfo = barInfoAtBeat(bi);
+    const bar = Math.abs(bi - barInfo.barStart) < 1e-6;
     ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
     ctx.lineWidth = bar ? 2 : 1;
     ctx.beginPath();
@@ -4597,11 +4770,17 @@ function drawBeatGrid(ctx,w,h,vStart,vEnd,off,subdiv,mapX=timeToX){
   for(let bi=startBeat; bi<=endBeat; bi++){
     const t=tempoBeatToSec(bi) + off;
     if(t < vStart || t > vEnd) continue;
-    const x=mapX(t); const bar=(bi%4===0);
+    const x=mapX(t);
+    const barInfo = barInfoAtBeat(bi);
+    const bar = Math.abs(bi - barInfo.barStart) < 1e-6;
     ctx.strokeStyle = bar ? "#66d9ef" : "#265a6d";
     ctx.lineWidth = bar ? 3 : 1.5;
     ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
-    if(bar){ ctx.fillStyle="#b9c2d9"; ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2,x+2), h-6); }
+    if(bar){
+      const barLabel = `M${barInfo.barIndex + 1}`;
+      ctx.fillStyle="#b9c2d9";
+      ctx.fillText(barLabel, Math.max(2,x+2), h-6);
+    }
     if(subdiv && subdiv>1){
       if(pxPerSec <= 0) continue;
       for(let k=1;k<subdiv;k++){
@@ -4668,8 +4847,13 @@ function cellToAbsPos(c, r) {
 
 function beatInfoAt(t){
   const off=computeOffsetSeconds(); const beats=tempoSecToBeat(t - off);
-  const bar=Math.floor(beats/4)+1, inBar=beats-(bar-1)*4, bnum=Math.floor(inBar)+1, frac=inBar-Math.floor(inBar);
-  return {valid:true, text:`${beats.toFixed(3)} (M${bar}, B${bnum}${frac>0?`+${frac.toFixed(3)}`:""})`};
+  const info = barInfoAtBeat(beats);
+  const bar = info.barIndex + 1;
+  const inBar = info.beatInBar;
+  const bnum = Math.floor(inBar) + 1;
+  const frac = inBar - Math.floor(inBar);
+  const sig = `${info.timeSig?.numerator ?? 4}/${info.timeSig?.denominator ?? 4}`;
+  return {valid:true, text:`${beats.toFixed(3)} (M${bar} ${sig}, B${bnum}${frac>0?`+${frac.toFixed(3)}`:""})`};
 }
 function computeOffsetSeconds(){
   const byBeats=$("#timeMode").value==="Beats";
@@ -5212,6 +5396,8 @@ function firstLayout(){
   buildGrid();
   rebuildTempoCache();
   renderTempoMapList();
+  rebuildTimeSigCache();
+  renderTimeSigMapList();
   // ★ 테이블 먼저
   renderNotes();
   // 그 다음 그리기들
