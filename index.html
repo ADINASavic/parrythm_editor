@@ -328,6 +328,7 @@
     <div id="editBar" class="editbar">
       <span class="pill">Editing <span id="editLabel" style="font-weight:700"></span></span>
       <button class="primary" onclick="saveEdit()">Save</button>
+      <button class="bad" onclick="deleteEdit()">Delete</button>
       <button class="warn" onclick="cancelEdit()">Cancel</button>
     </div>
 
@@ -440,6 +441,8 @@
       <input id="audioFile" type="file" accept="audio/*">
       <button id="playBtn" disabled>Play</button>
       <button id="pauseBtn" disabled>Pause</button>
+      <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
+      <button id="redoBtn" title="Redo (Ctrl+Y)" disabled>Redo</button>
       <span class="pill timebadge">Time: <span id="curTime">0.000</span> / <span id="durTime">0.000</span> s</span>
       <span class="pill timebadge">Beat: <span id="curBeat">-</span></span>
       <span class="sep"></span>
@@ -473,7 +476,7 @@
       <span class="muted">Click: seek/set time / Drag: pan / Shift+Drag: select / Ctrl+Wheel: zoom</span>
     </div>
     <div style="margin-top:8px">
-      <canvas id="wave" height="140" style="width:100%"></canvas>
+      <canvas id="wave" height="120" style="width:98%"></canvas>
       <audio id="audio" style="display:none" preload="metadata" crossorigin="anonymous"></audio>
     </div>
   </section>
@@ -888,6 +891,58 @@ let chart = {
   startOffset:0, startOffsetBeats:0,
   notes:[]
 };
+// --- Undo/Redo history
+const UNDO_LIMIT = 200;
+let undoStack = [];
+let redoStack = [];
+let historyLock = false; // prevent recording during undo/redo
+
+function pushHistory(){
+  if (historyLock) return;
+  try{
+    const snap = JSON.stringify(chart);
+    undoStack.push(snap);
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    // new action clears redo
+    redoStack = [];
+  }catch(err){ console.warn('pushHistory failed', err); }
+  if (typeof updateHistoryButtons === 'function') updateHistoryButtons();
+}
+
+function applySnapshot(snap){
+  if (!snap) return;
+  historyLock = true;
+  try{
+    const obj = JSON.parse(snap);
+    chart = obj;
+    // sync some UI fields
+    try{ if (document.getElementById('title')) document.getElementById('title').value = chart.title || ''; }catch(e){}
+    try{ if (document.getElementById('bpm')) document.getElementById('bpm').value = chart.bpm || 120; }catch(e){}
+    try{ if (document.getElementById('timeMode')) document.getElementById('timeMode').value = chart.timeMode || 'Seconds'; }catch(e){}
+    try{ if (document.getElementById('startOffsetSec')) document.getElementById('startOffsetSec').value = chart.startOffset || 0; }catch(e){}
+    try{ if (document.getElementById('startOffsetBeats')) document.getElementById('startOffsetBeats').value = chart.startOffsetBeats || 0; }catch(e){}
+    ensureCreatedAt(); renderNotes(); if(typeof buildStyleSchedule==='function') buildStyleSchedule(); resetStyleCursor(getPreviewNowSec()); drawWave(); drawView();
+  }catch(err){ console.warn('applySnapshot failed', err); }
+  historyLock = false;
+}
+
+function undo(){
+  if (undoStack.length <= 1) return; // keep current
+  const cur = undoStack.pop();
+  redoStack.push(cur);
+  const prev = undoStack[undoStack.length-1];
+  applySnapshot(prev);
+}
+
+function redo(){
+  if (redoStack.length === 0) return;
+  const snap = redoStack.pop();
+  undoStack.push(snap);
+  applySnapshot(snap);
+}
+
+// initial snapshot
+pushHistory();
 let selectedCell = {c:1,r:1};
 let circlePosAbs = {x:REF_W/2,y:REF_H/2};
 let pathPtsAbs = []; let pathFinished = false;
@@ -2207,6 +2262,8 @@ function pushNote(obj){
     buildStyleSchedule();
     resetStyleCursor(getPreviewNowSec());
   }
+  // record history
+  pushHistory();
 }
 
 /* ---------- Edit ---------- */
@@ -2510,6 +2567,8 @@ function saveEdit(){
   drawView?.();
   drawWave?.();
   renderNotes?.();
+  // record history for edit
+  pushHistory();
 }
 
 
@@ -2688,9 +2747,27 @@ function removeNote(i){
   //  삭제 후에도 재빌드
   buildStyleSchedule();
   resetStyleCursor(getPreviewNowSec());
+  pushHistory();
 }
-function moveUp(i){ if(i<=0) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i-1,0,it); renderNotes(); }
-function moveDown(i){ if(i>=chart.notes.length-1) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i+1,0,it); renderNotes(); }
+
+// Delete the currently edited note from the edit bar
+function deleteEdit(){
+  const idx = editIndex;
+  if (idx === null || idx === undefined) return;
+  if (!confirm("Delete this note?")) return;
+  // remove note
+  chart.notes.splice(idx, 1);
+  // hide edit UI and refresh
+  cancelEdit(false);
+  renderNotes();
+  buildStyleSchedule();
+  resetStyleCursor(getPreviewNowSec());
+  drawWave();
+  drawView();
+  pushHistory();
+}
+function moveUp(i){ if(i<=0) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i-1,0,it); renderNotes(); pushHistory(); }
+function moveDown(i){ if(i>=chart.notes.length-1) return; const it=chart.notes.splice(i,1)[0]; chart.notes.splice(i+1,0,it); renderNotes(); pushHistory(); }
 let dragIndex=null; function attachRowDragHandlers(tr,idx){ tr.setAttribute("draggable","true"); tr.addEventListener("dragstart",(e)=>{ dragIndex=idx; tr.style.opacity="0.5"; }); tr.addEventListener("dragend",()=>{ tr.style.opacity=""; dragIndex=null; }); tr.addEventListener("dragover",(e)=>{ e.preventDefault(); }); tr.addEventListener("drop",(e)=>{ e.preventDefault(); const targetIdx=parseInt(tr.dataset.index,10); if(dragIndex===null || dragIndex===targetIdx) return; const item=chart.notes.splice(dragIndex,1)[0]; chart.notes.splice(targetIdx,0,item); renderNotes(); }); }
 
 /* ---------- 정렬 & 시간 계산 ---------- */
@@ -2935,6 +3012,8 @@ $("#importFile").addEventListener("change",(e)=>{
 
   buildStyleSchedule();
   resetStyleCursor(0);
+  // import = new state
+  pushHistory();
 });
 function sanitizeName(s){
   // 파일/폴더명에 안 되는 문자 제거(윈도우/맥 공통)
@@ -3002,7 +3081,7 @@ const songMeta = {
 
 /* ---------- Waveform ---------- */
 function setWaveControlsEnabled(on = true){
-  [playBtn, pauseBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
+  [playBtn, pauseBtn, undoBtn, redoBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
     if (b) b.disabled = !on;
   });
 }
@@ -3199,10 +3278,11 @@ function syncUiAccurate(){
 const waveCanvas=$("#wave"); const wctx=waveCanvas.getContext("2d");
 const audioEl=$("#audio"); const audioFileInput=$("#audioFile");
 const playBtn=$("#playBtn"), pauseBtn=$("#pauseBtn");
+const undoBtn=$("#undoBtn"), redoBtn=$("#redoBtn");
 const curTimeEl=$("#curTime"), durTimeEl=$("#durTime"), curBeatEl=$("#curBeat");
 const zoomInBtn=$("#zoomInBtn"), zoomOutBtn=$("#zoomOutBtn"), fitBtn=$("#fitBtn");
 const ampScaleInput=$("#ampScale");
-let audioBuffer=null, audioURL=null, viewStart=0, viewEnd=0, isPanning=false, dragStartX=0, dragStartView=0, ampScale=0.6;
+let audioBuffer=null, audioURL=null, viewStart=0, viewEnd=0, isPanning=false, dragStartX=0, dragStartView=0, dragStartSpan=0, ampScale=0.6;
 let dragSelecting=false, dragT0=0, dragT1=0;
 let _rafId = null;
 
@@ -3264,6 +3344,8 @@ audioFileInput.addEventListener("change", async (e)=>{
 
   // 캔버스 DPI/크기 반영
   resizeWaveCanvas();
+  // history button initial state
+  if (typeof updateHistoryButtons === 'function') updateHistoryButtons();
 });
 let _styleBaseColor = rgba(255, 255, 255, 255); 
 function applyStyleEvents(nowSec){
@@ -3281,6 +3363,22 @@ function applyStyleEvents(nowSec){
 
 playBtn.onclick  = () => { (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
 pauseBtn.onclick = () => { (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
+
+// Spacebar toggles play/pause when not typing in an input field
+window.addEventListener("keydown", (e) => {
+  if (e.code === 'Space' || e.keyCode === 32) {
+    const ae = document.activeElement;
+    const tag = ae && ae.tagName ? ae.tagName.toUpperCase() : "";
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable)) return;
+    e.preventDefault();
+    if (isPlaying()) {
+      if (AC_enabled && AC_buf) pauseAccurate(); else audioEl.pause();
+    } else {
+      if (AC_enabled && AC_buf) playAccurate(); else audioEl.play();
+    }
+  }
+}, {passive:false});
+
 audioEl.addEventListener("timeupdate", ()=>{
   const t = qms(audioEl.currentTime || 0);
   applyStyleEvents(t);
@@ -3292,7 +3390,7 @@ audioEl.addEventListener("timeupdate", ()=>{
 });
 
 function setWaveControlsEnabled(on=true){
-  [playBtn, pauseBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
+  [playBtn, pauseBtn, undoBtn, redoBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
     if (b) b.disabled = !on;
   });
 }
@@ -3321,6 +3419,20 @@ function getDuration(){
       || (audioBuffer?.duration || 0)
       || 0;
 }
+
+// History buttons updater and wiring
+function updateHistoryButtons(){
+  try{
+    if (typeof undoBtn !== 'undefined' && undoBtn) undoBtn.disabled = undoStack.length <= 1;
+    if (typeof redoBtn !== 'undefined' && redoBtn) redoBtn.disabled = redoStack.length === 0;
+  }catch(e){}
+}
+
+if (typeof undoBtn !== 'undefined' && undoBtn){ undoBtn.addEventListener('click', ()=>{ undo(); updateHistoryButtons(); }); }
+if (typeof redoBtn !== 'undefined' && redoBtn){ redoBtn.addEventListener('click', ()=>{ redo(); updateHistoryButtons(); }); }
+
+// Ensure initial state
+updateHistoryButtons();
 function ensureViewBounds(){
   const D = getDuration();
   if (D <= 0){ viewStart = 0; viewEnd = 0; return; }
@@ -3375,7 +3487,17 @@ waveCanvas.addEventListener("mouseleave", ()=> waveHover = false);
 window.addEventListener("keydown", (e)=>{
   // 텍스트 입력 중엔 무시
   const tag = (document.activeElement && document.activeElement.tagName) || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (document.activeElement && document.activeElement.isContentEditable)) return;
+
+  // Undo/Redo: Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z)
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')){
+    e.preventDefault();
+    if (e.shiftKey) { redo(); } else { undo(); }
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')){
+    e.preventDefault(); redo(); return;
+  }
 
   // 좌/우 키만 처리
   if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -3449,8 +3571,13 @@ waveCanvas.addEventListener("mousemove",(e)=>{
 
 window.addEventListener("mousemove",(e)=>{
   if(isPanning){
-    const rect=waveCanvas.getBoundingClientRect(); const x=e.clientX-rect.left; const dx=x-dragStartX;
-    const dt=dx*(viewEnd-viewStart)/waveCanvas.clientWidth; viewStart=dragStartView-dt; viewEnd=viewStart+(viewEnd-dragStartView);
+    const rect = waveCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const dx = x - dragStartX;
+    // use the original span captured at mouse down to avoid span changes causing zoom
+    const dt = dx * (dragStartSpan) / Math.max(1, waveCanvas.clientWidth);
+    viewStart = dragStartView - dt;
+    viewEnd = viewStart + dragStartSpan;
     ensureViewBounds(); drawWave();
   } else if(dragSelecting){
     const rect=waveCanvas.getBoundingClientRect(); const x=e.clientX-rect.left; dragT1=xToTime(x); drawWave();
@@ -3461,11 +3588,42 @@ window.addEventListener("mousemove",(e)=>{
 });
 window.addEventListener("mouseup",()=>{ if(isPanning) isPanning=false; if(dragSelecting){ dragSelecting=false; const a=Math.min(dragT0,dragT1), b=Math.max(dragT0,dragT1); applyTimeFromWave(a,b); } });
 
+// Wheel: only support Ctrl+Wheel for zoom. Remove wheel-based panning.
 waveCanvas.addEventListener("wheel",(e)=>{
-  const t=xToTime(e.offsetX);
-  if(e.ctrlKey){ e.preventDefault(); const f=(e.deltaY<0)?0.9:1.1; zoomAt(t,f); }
-  else{ const dt=(viewEnd-viewStart)*(e.deltaY>0?0.05:-0.05); viewStart+=dt; viewEnd+=dt; ensureViewBounds(); drawWave(); }
+  if (e.ctrlKey){
+    e.preventDefault();
+    const t = xToTime(e.offsetX);
+    const f = (e.deltaY < 0) ? 0.9 : 1.1;
+    zoomAt(t, f);
+  }
+  // otherwise ignore wheel to avoid accidental timeline jumps
 },{passive:false});
+
+// Mouse drag: left-drag to pan the timeline, Shift+left-drag to select a time range.
+waveCanvas.addEventListener("mousedown", (e) => {
+  // Only respond to primary button
+  if (e.button !== 0) return;
+  const rect = waveCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  // If Shift is held, start range selection
+  if (e.shiftKey) {
+    dragSelecting = true;
+    dragT0 = xToTime(x);
+    dragT1 = dragT0;
+    // prevent text selection
+    e.preventDefault();
+    drawWave();
+    return;
+  }
+
+  // Otherwise start panning
+  isPanning = true;
+  dragStartX = x;
+  dragStartView = viewStart;
+  dragStartSpan = viewEnd - viewStart;
+  // prevent text selection / native drag
+  e.preventDefault();
+}, {passive:false});
 
 
 
@@ -3616,17 +3774,21 @@ function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv){
     const t=off+bi*spb; if(t>vEnd) break;
     if(t>=vStart){
       const x=timeToX(t); const bar=(bi%4===0);
-      ctx.strokeStyle=bar?"#66d9ef":"#265a6d"; ctx.lineWidth=bar?2:1;
+      // Measure (bar) lines are thicker; quarter-note (beat) lines are thinner
+      ctx.strokeStyle = bar ? "#66d9ef" : "#265a6d";
+      ctx.lineWidth = bar ? 3 : 1.5;
       ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
       if(bar){ ctx.fillStyle="#b9c2d9"; ctx.fillText(`M${Math.floor(bi/4)+1}`, Math.max(2,x+2), h-6); }
     }
     if(subdiv && subdiv>1){
-      // 너무 촘촘하면(줌아웃) 보조선은 생략해서 가시성과 성능을 지킵니다.
+      // Skip drawing very dense subdivision lines for performance/clarity
       const subPx = pxPerSec * (spb / subdiv);
       if(subPx < 3) continue;
       for(let k=1;k<subdiv;k++){
         const tk=t+k*spb/subdiv; if(tk<vStart||tk>vEnd) continue;
-        const xk=timeToX(tk); ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke();
+        const xk=timeToX(tk);
+        ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke();
       }
     }
   }
@@ -4233,7 +4395,7 @@ function parseAbsXY(s,def){ const [xs,ys]=(s||def).split(","); return {x:clamp(p
 })();
 
 // Clear All
-function clearAll(){ chart.notes=[]; renderNotes(); drawView(); }
+function clearAll(){ chart.notes=[]; renderNotes(); drawView(); pushHistory(); }
 
 /* ---------- Init ---------- */
 function firstLayout(){
@@ -4260,6 +4422,11 @@ setInterval(drawView, 100);
 </script>
 </body>
 </html>
+
+
+
+
+
 
 
 
