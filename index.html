@@ -551,6 +551,20 @@
           <option value="64">1/64</option>
         </select>
       </label>
+      <label class="mini">Wave Note
+        <select id="waveNoteType">
+          <option value="Grid">Grid</option>
+          <option value="Trail">Trail</option>
+          <option value="Long">Long</option>
+          <option value="CircleTap">CircleTap</option>
+          <option value="Slider">Slider</option>
+          <option value="Bullet">Bullet</option>
+          <option value="Camera">Camera</option>
+          <option value="Line">Line</option>
+          <option value="Voice">Voice</option>
+          <option value="Image">Image</option>
+        </select>
+      </label>
       <label class="mini">Speed
   <select id="playbackRate">
     <option value="0.25">0.25×</option>
@@ -572,7 +586,7 @@
     </div>
     <div style="margin-top:8px">
       <input id="waveScroll" class="wave-scroll" type="range" min="0" max="0" value="0" step="0.001" disabled>
-      <canvas id="wave" height="70" style="width:98%;margin-top:6px"></canvas>
+      <canvas id="wave" height="46" style="width:98%;margin-top:6px"></canvas>
       <audio id="audio" style="display:none" preload="metadata" crossorigin="anonymous"></audio>
     </div>
   </section>
@@ -1091,6 +1105,10 @@ $("#startOffsetBeats").addEventListener("input", e=> { chart.startOffsetBeats = 
 
 $("#noteType").addEventListener("change", e=>{
   const t = e.target.value;
+  const waveNoteType = $("#waveNoteType");
+  if (waveNoteType && waveNoteType.value !== t) {
+    waveNoteType.value = t;
+  }
   const isGridFamily = (t==="Grid" || t==="Trail" || t==="Long");
   $("#gridInputs").style.display   = isGridFamily ? "block":"none";
   $("#circleInputs").style.display = (t==="CircleTap") ? "block":"none";
@@ -1114,6 +1132,18 @@ $("#noteType").addEventListener("change", e=>{
   refreshAddButtons();
   updateBulletStageLabel();
 });
+
+const waveNoteType = $("#waveNoteType");
+if (waveNoteType) {
+  waveNoteType.value = $("#noteType").value;
+  waveNoteType.addEventListener("change", (e) => {
+    const next = e.target.value;
+    if ($("#noteType").value !== next) {
+      $("#noteType").value = next;
+      $("#noteType").dispatchEvent(new Event("change"));
+    }
+  });
+}
 
 /* ---------- Grid UI ---------- */
 function addStyleEvent({ type="Line", timeSec=null, timeBeat=null, target="grid-all", index=0, color="#ffffffff", fadeSec=0, fadeBeat=0 }){
