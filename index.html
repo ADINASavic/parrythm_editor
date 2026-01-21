@@ -44,6 +44,12 @@
   .editrow{background:rgba(102,217,239,0.08)}
   .fullrow{grid-column:1 / -1}
   .wave-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .mini-side{display:flex;gap:10px;align-items:flex-start}
+  .mini-wave-panel{width:260px;padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
+  .mini-wave-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .mini-wave-toolbar .controls{display:flex;gap:6px}
+  .mini-wave-btn{padding:4px 6px;border-radius:6px;font-size:12px}
+  .wave-scroll{width:220px}
   .timebadge{font-variant-numeric:tabular-nums}
   .sep{width:1px;height:22px;background:#2d3653;margin:0 4px}
   .mini{width:auto}
@@ -470,19 +476,20 @@
           ">
         </canvas>
 
-        <!-- mini notes (겹침 없음) -->
-        <div
-          id="miniNotes"
-          style="
-            width:220px;
-            max-height:440px;
-            overflow:auto;
-            padding:8px;
-            background:rgba(10,14,22,0.95);
-            border:1px solid #26304a;
-            border-radius:8px;
-            font-size:12px;
-          ">
+        <div class="mini-side">
+          <!-- mini notes (겹침 없음) -->
+          <div
+            id="miniNotes"
+            style="
+              width:220px;
+              max-height:440px;
+              overflow:auto;
+              padding:8px;
+              background:rgba(10,14,22,0.95);
+              border:1px solid #26304a;
+              border-radius:8px;
+              font-size:12px;
+            ">
 
           <div
             style="
@@ -506,7 +513,19 @@
             </select>
           </div>
 
-          <div id="miniList"></div>
+            <div id="miniList"></div>
+          </div>
+
+          <div class="mini-wave-panel">
+            <div class="mini-wave-toolbar">
+              <strong style="font-size:12px">Wave Preview</strong>
+              <div class="controls">
+                <button id="miniPlayBtn" class="mini-wave-btn" disabled>Play</button>
+                <button id="miniPauseBtn" class="mini-wave-btn" disabled>Pause</button>
+              </div>
+            </div>
+            <canvas id="waveMini" height="90" style="width:260px"></canvas>
+          </div>
         </div>
 
       </div>
@@ -550,6 +569,9 @@
       <button id="zoomInBtn" disabled>Zoom+</button>
       <button id="zoomOutBtn" disabled>Zoom-</button>
       <button id="fitBtn" disabled>Fit</button>
+      <label class="mini">Scroll
+        <input id="waveScroll" class="wave-scroll" type="range" min="0" max="0" value="0" step="0.001" disabled>
+      </label>
       <span class="sep"></span>
       <label class="mini">Amp <input id="ampScale" type="range" min="0.2" max="1.0" value="0.6" step="0.05"></label>
       <span class="muted">Click: seek/set time / Drag: pan / Shift+Drag: select / Ctrl+Wheel: zoom</span>
@@ -3256,7 +3278,7 @@ const songMeta = {
 
 /* ---------- Waveform ---------- */
 function setWaveControlsEnabled(on = true){
-  [playBtn, pauseBtn, undoBtn, redoBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
+  [playBtn, pauseBtn, miniPlayBtn, miniPauseBtn, undoBtn, redoBtn, zoomInBtn, zoomOutBtn, fitBtn, waveScroll].forEach(b=>{
     if (b) b.disabled = !on;
   });
 }
@@ -3451,11 +3473,14 @@ function syncUiAccurate(){
 }
 
 const waveCanvas=$("#wave"); const wctx=waveCanvas.getContext("2d");
+const waveMiniCanvas=$("#waveMini"); const wctxMini=waveMiniCanvas?.getContext("2d");
 const audioEl=$("#audio"); const audioFileInput=$("#audioFile");
 const playBtn=$("#playBtn"), pauseBtn=$("#pauseBtn");
+const miniPlayBtn=$("#miniPlayBtn"), miniPauseBtn=$("#miniPauseBtn");
 const undoBtn=$("#undoBtn"), redoBtn=$("#redoBtn");
 const curTimeEl=$("#curTime"), durTimeEl=$("#durTime"), curBeatEl=$("#curBeat");
 const zoomInBtn=$("#zoomInBtn"), zoomOutBtn=$("#zoomOutBtn"), fitBtn=$("#fitBtn");
+const waveScroll=$("#waveScroll");
 const ampScaleInput=$("#ampScale");
 let audioBuffer=null, audioURL=null, viewStart=0, viewEnd=0, isPanning=false, dragStartX=0, dragStartView=0, dragStartSpan=0, ampScale=0.6;
 let dragSelecting=false, dragT0=0, dragT1=0;
@@ -3471,7 +3496,15 @@ function resizeWaveCanvas(){
   waveCanvas.width=Math.max(600,Math.floor(cssW*dpr)); waveCanvas.height=Math.floor(cssH*dpr);
   wctx.setTransform(dpr,0,0,dpr,0,0); drawWave();
 }
+function resizeWaveMiniCanvas(){
+  if (!waveMiniCanvas || !wctxMini) return;
+  const dpr=window.devicePixelRatio||1, cssW=waveMiniCanvas.clientWidth, cssH=waveMiniCanvas.clientHeight;
+  waveMiniCanvas.width=Math.max(220,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.floor(cssH*dpr);
+  wctxMini.setTransform(dpr,0,0,dpr,0,0);
+  drawWaveMini();
+}
 window.addEventListener("resize", resizeWaveCanvas);
+window.addEventListener("resize", resizeWaveMiniCanvas);
 
 audioFileInput.addEventListener("change", async (e)=>{
   const file = e.target.files?.[0];
@@ -3519,6 +3552,7 @@ audioFileInput.addEventListener("change", async (e)=>{
 
   // 캔버스 DPI/크기 반영
   resizeWaveCanvas();
+  resizeWaveMiniCanvas();
   // history button initial state
   if (typeof updateHistoryButtons === 'function') updateHistoryButtons();
 });
@@ -3538,6 +3572,8 @@ function applyStyleEvents(nowSec){
 
 playBtn.onclick  = () => { (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
 pauseBtn.onclick = () => { (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
+if (miniPlayBtn) miniPlayBtn.onclick = () => { (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
+if (miniPauseBtn) miniPauseBtn.onclick = () => { (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
 
 // Spacebar toggles play/pause when not typing in an input field
 window.addEventListener("keydown", (e) => {
@@ -3565,7 +3601,7 @@ audioEl.addEventListener("timeupdate", ()=>{
 });
 
 function setWaveControlsEnabled(on=true){
-  [playBtn, pauseBtn, undoBtn, redoBtn, zoomInBtn, zoomOutBtn, fitBtn].forEach(b=>{
+  [playBtn, pauseBtn, miniPlayBtn, miniPauseBtn, undoBtn, redoBtn, zoomInBtn, zoomOutBtn, fitBtn, waveScroll].forEach(b=>{
     if (b) b.disabled = !on;
   });
 }
@@ -3653,6 +3689,38 @@ function zoomAt(c, f){
 
   ensureViewBounds();
   drawWave();
+}
+
+function updateWaveScrollbar(){
+  if (!waveScroll) return;
+  const D = getDuration();
+  const span = viewEnd - viewStart;
+  if (!isFinite(D) || D <= 0 || !isFinite(span) || span <= 0){
+    waveScroll.disabled = true;
+    waveScroll.min = 0;
+    waveScroll.max = 0;
+    waveScroll.value = 0;
+    return;
+  }
+  const maxStart = Math.max(0, D - span);
+  waveScroll.disabled = false;
+  waveScroll.min = 0;
+  waveScroll.max = maxStart;
+  waveScroll.step = Math.max(0.001, span / 500);
+  waveScroll.value = clamp(viewStart, 0, maxStart);
+}
+
+if (waveScroll){
+  waveScroll.addEventListener("input", (e)=>{
+    const D = getDuration();
+    const span = viewEnd - viewStart;
+    const maxStart = Math.max(0, D - span);
+    const nextStart = clamp(parseFloat(e.target.value || "0"), 0, maxStart);
+    viewStart = nextStart;
+    viewEnd = viewStart + span;
+    ensureViewBounds();
+    drawWave();
+  });
 }
 
 let waveHover = false;
@@ -3911,6 +3979,95 @@ function drawWave(){
     }
   }catch(err){ /* ignore */ }
 
+  drawWaveMini();
+  updateWaveScrollbar();
+}
+function drawWaveMini(){
+  if (!waveMiniCanvas || !wctxMini) return;
+  const w=waveMiniCanvas.clientWidth, h=waveMiniCanvas.clientHeight;
+  wctxMini.clearRect(0,0,w,h); wctxMini.fillStyle="#0b0f1c"; wctxMini.fillRect(0,0,w,h);
+  if(audioBuffer){ drawPeaksRangeMini(wctxMini,w,h,audioBuffer,viewStart,viewEnd,ampScale); }
+  else{ wctxMini.fillStyle="#9aa4bb"; wctxMini.fillText("오디오 파일을 선택하세요.", 8, h/2); }
+  const mapX = (time) => {
+    const span=(viewEnd-viewStart)||1;
+    return ((time-viewStart)/span)*w;
+  };
+  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
+  if(t>=viewStart && t<=viewEnd){
+    const x=mapX(t); wctxMini.strokeStyle="#ffd48a"; wctxMini.lineWidth=2; wctxMini.beginPath(); wctxMini.moveTo(x,0); wctxMini.lineTo(x,h); wctxMini.stroke();
+  }
+}
+function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
+  const data = audioBuffer.getChannelData(0);
+  const sr   = audioBuffer.sampleRate;
+  const centerY = h * 0.5;
+  const gain = Math.min(1, ampScale * 1.1);
+  const span = Math.max(1e-6, t1 - t0);
+  const samplesPerPixel = Math.max(16, Math.floor((span * sr) / w));
+  const xStep = 1;
+
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(200,235,255,0.85)";
+
+  for(let x = 0; x < w; x += xStep){
+    const base = Math.floor((t0 * sr) + x * samplesPerPixel);
+    if(base >= data.length) break;
+
+    let min =  1.0;
+    let max = -1.0;
+
+    for(let i = 0; i < samplesPerPixel; i++){
+      const v = data[base + i];
+      if(v === undefined) break;
+      if(v < min) min = v;
+      if(v > max) max = v;
+    }
+
+    const amp = Math.max(Math.abs(min), Math.abs(max));
+    const yTop = centerY - amp * centerY * gain;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, centerY);
+    ctx.lineTo(x + 0.5, yTop);
+    ctx.stroke();
+  }
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,210,140,0.75)";
+  const THRESHOLD = 0.08;
+
+  for(let x = 0; x < w; x += 2){
+    const base = Math.floor((t0 * sr) + x * samplesPerPixel);
+    if(base >= data.length) break;
+
+    let sumSq = 0;
+    let count = 0;
+
+    for(let i = 0; i < samplesPerPixel; i++){
+      const v = data[base + i];
+      if(v === undefined) break;
+      sumSq += v * v;
+      count++;
+    }
+
+    if(count === 0) continue;
+    let rms = Math.sqrt(sumSq / count);
+    if(rms < THRESHOLD) continue;
+    rms = (rms - THRESHOLD) / (1.0 - THRESHOLD);
+    const y = centerY - rms * centerY * gain;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, centerY);
+    ctx.lineTo(x + 0.5, y);
+    ctx.stroke();
+  }
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#334";
+  ctx.beginPath();
+  ctx.moveTo(0, centerY);
+  ctx.lineTo(w, centerY);
+  ctx.stroke();
 }
 function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
   const data = audioBuffer.getChannelData(0);
@@ -3948,12 +4105,12 @@ function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
       if(v > max) max = v;
     }
 
-    const yMin = centerY - min * centerY * gain;
-    const yMax = centerY - max * centerY * gain;
+    const amp = Math.max(Math.abs(min), Math.abs(max));
+    const yTop = centerY - amp * centerY * gain;
 
     ctx.beginPath();
-    ctx.moveTo(x + 0.5, yMin);
-    ctx.lineTo(x + 0.5, yMax);
+    ctx.moveTo(x + 0.5, centerY);
+    ctx.lineTo(x + 0.5, yTop);
     ctx.stroke();
   }
 
@@ -4013,26 +4170,26 @@ function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
 
 
 
-function drawTimeGrid(ctx,w,h,vStart,vEnd){
+function drawTimeGrid(ctx,w,h,vStart,vEnd,mapX=timeToX){
   const span=vEnd-vStart; if(span<=0) return;
   const targetPx=80; const secPerPx=span/w; const raw=targetPx*secPerPx;
   const mag=Math.pow(10,Math.floor(Math.log10(raw))); const cand=[1,2,5,10]; let step=cand[0]*mag;
   for(const c of cand){ const s=c*mag; if(s>=raw){step=s;break;} }
   const startTick=Math.ceil(vStart/step)*step;
   for(let s=startTick;s<=vEnd+1e-6;s+=step){
-    const x=timeToX(s); const major=(Math.round(s/step)%5===0);
+    const x=mapX(s); const major=(Math.round(s/step)%5===0);
     ctx.strokeStyle=major?"#2d3653":"#1e2744"; ctx.lineWidth=major?1.5:1;
     ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
     if(major){ ctx.fillStyle="#9aa4bb"; ctx.fillText(`${s.toFixed(0)}s`, Math.max(2,x+2), 12); }
   }
 }
-function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv){
+function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv,mapX=timeToX){
   const spb=60/bpm; const span=vEnd-vStart; const pxPerSec = (span>0)?(w/span):0;
   let bi=Math.floor((vStart-off)/spb)-1;
   for(;;bi++){
     const t=off+bi*spb; if(t>vEnd) break;
     if(t>=vStart){
-      const x=timeToX(t); const bar=(bi%4===0);
+      const x=mapX(t); const bar=(bi%4===0);
       // Measure (bar) lines are thicker; quarter-note (beat) lines are thinner
       ctx.strokeStyle = bar ? "#66d9ef" : "#265a6d";
       ctx.lineWidth = bar ? 3 : 1.5;
@@ -4045,7 +4202,7 @@ function drawBeatGrid(ctx,w,h,vStart,vEnd,bpm,off,subdiv){
       if(subPx < 3) continue;
       for(let k=1;k<subdiv;k++){
         const tk=t+k*spb/subdiv; if(tk<vStart||tk>vEnd) continue;
-        const xk=timeToX(tk);
+        const xk=mapX(tk);
         ctx.strokeStyle="#1e3a4f"; ctx.lineWidth=1;
         ctx.beginPath(); ctx.moveTo(xk,0); ctx.lineTo(xk,h); ctx.stroke();
       }
