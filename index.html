@@ -3722,6 +3722,38 @@ if (waveScroll){
   });
 }
 
+function updateWaveScrollbar(){
+  if (!waveScroll) return;
+  const D = getDuration();
+  const span = viewEnd - viewStart;
+  if (!isFinite(D) || D <= 0 || !isFinite(span) || span <= 0){
+    waveScroll.disabled = true;
+    waveScroll.min = 0;
+    waveScroll.max = 0;
+    waveScroll.value = 0;
+    return;
+  }
+  const maxStart = Math.max(0, D - span);
+  waveScroll.disabled = false;
+  waveScroll.min = 0;
+  waveScroll.max = maxStart;
+  waveScroll.step = Math.max(0.001, span / 500);
+  waveScroll.value = clamp(viewStart, 0, maxStart);
+}
+
+if (waveScroll){
+  waveScroll.addEventListener("input", (e)=>{
+    const D = getDuration();
+    const span = viewEnd - viewStart;
+    const maxStart = Math.max(0, D - span);
+    const nextStart = clamp(parseFloat(e.target.value || "0"), 0, maxStart);
+    viewStart = nextStart;
+    viewEnd = viewStart + span;
+    ensureViewBounds();
+    drawWave();
+  });
+}
+
 let waveHover = false;
 waveCanvas.addEventListener("mouseenter", ()=> waveHover = true);
 waveCanvas.addEventListener("mouseleave", ()=> waveHover = false);
