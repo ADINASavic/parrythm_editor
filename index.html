@@ -3852,12 +3852,13 @@ if (e.code && e.code.startsWith('Numpad')){
   const dir = (e.key === "ArrowLeft") ? -1 : +1;
   const cur = (typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : (audioEl.currentTime || 0);
   const target = Math.max(0, Math.min(getDuration(), cur + dir * unitSec));
+  const snapped = snapTime(target);
   // If playing, seek; otherwise move previewTimeSec and refresh
   if (isPlaying()){
-    if (typeof seekAccurate === 'function') seekAccurate(target);
-    else audioEl.currentTime = target;
+    if (typeof seekAccurate === 'function') seekAccurate(snapped);
+    else audioEl.currentTime = snapped;
   } else {
-    previewTimeSec = qms(target);
+    previewTimeSec = qms(snapped);
     curTimeEl.textContent = previewTimeSec.toFixed(3);
     window.getPreviewNowSec = () => previewTimeSec;
     applyStyleEvents(previewTimeSec);
@@ -3916,8 +3917,9 @@ if (waveMiniCanvas){
     const { miniStart, miniEnd } = getMiniWindowRange(tNow, bpm, offset);
     const span = (miniEnd - miniStart) || 1;
     const t = clamp(miniStart + (x / waveMiniCanvas.clientWidth) * span, 0, dur);
-    applyTimeFromWave(t, null);     // 시킹 + 입력칸 채우기
-    const tt = qms(t);
+    const snapped = snapTime(t);
+    applyTimeFromWave(snapped, null);     // 시킹 + 입력칸 채우기
+    const tt = qms(snapped);
 
     // 정지 중일 때는 프리뷰 커서도 즉시 갱신
     if (!isPlaying()) {
@@ -4124,7 +4126,7 @@ function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, bpm, off, mapX){
 function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
   const data = audioBuffer.getChannelData(0);
   const sr   = audioBuffer.sampleRate;
-  const centerY = h * 0.5;
+  const centerY = Math.max(1, h - 1);
   const gain = Math.min(1, ampScale * 1.1);
   const span = Math.max(1e-6, t1 - t0);
   const samplesPerPixel = Math.max(12, Math.floor((span * sr) / w));
@@ -4174,7 +4176,7 @@ function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
   const data = audioBuffer.getChannelData(0);
   const sr   = audioBuffer.sampleRate;
 
-  const centerY = h * 0.5;
+  const centerY = Math.max(1, h - 1);
   const gain = ampScale * 0.85;
 
   const span = Math.max(1e-6, t1 - t0);
