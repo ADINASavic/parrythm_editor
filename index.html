@@ -3470,11 +3470,6 @@ function chartDurationBeatsFromSec(startBeat, startSec, durationSec){
 function fixedTimeSecFromChart(sec, beat){
   return fixedBeatToSec(chartBeatFromTime(sec, beat));
 }
-function fixedBeatFromChart(sec, beat){
-  const chartBeat = chartBeatFromTime(sec, beat);
-  const chartSec = tempoBeatToSec(chartBeat);
-  return fixedSecToBeat(chartSec);
-}
 function fixedDurationSecFromChart(startBeat, startSec, durationBeats, durationSec){
   const beats = (isFinite(durationBeats) && durationBeats > 0)
     ? durationBeats
@@ -3487,7 +3482,6 @@ function appendFixedTimes(n){
 
   if (n.type === "Line"){
     out.fixedTimeSec = fixedTimeSecFromChart(n.timeSec, n.timeBeat);
-    out.fixedTimeBeat = fixedBeatFromChart(n.timeSec, n.timeBeat);
     const fadeBeats = (isFinite(n.fadeBeat) ? n.fadeBeat : (isFinite(n.fadebeat) ? n.fadebeat : undefined));
     out.fixedFadeSec = fixedDurationSecFromChart(n.timeBeat, n.timeSec, fadeBeats, n.fadeSec);
     return out;
@@ -3496,7 +3490,6 @@ function appendFixedTimes(n){
   if (n.type === "Bullet"){
     const spawnBeat = chartBeatFromTime(n.bulletSpawnTime, n.bulletSpawnBeat);
     out.fixedBulletSpawnTime = fixedBeatToSec(spawnBeat);
-    out.fixedBulletSpawnBeat = fixedBeatFromChart(n.bulletSpawnTime, n.bulletSpawnBeat);
     const toDockBeats = (isFinite(n.bulletToDockBeats) && n.bulletToDockBeats > 0)
       ? n.bulletToDockBeats
       : chartDurationBeatsFromSec(spawnBeat, n.bulletSpawnTime, n.bulletToDockDuration);
@@ -3512,7 +3505,6 @@ function appendFixedTimes(n){
   if (n.type === "Slider"){
     const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
     out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedStartBeat = fixedBeatFromChart(n.startTime, n.startBeat);
     out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
     return out;
   }
@@ -3520,21 +3512,18 @@ function appendFixedTimes(n){
   if (n.type === "Camera"){
     const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
     out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedStartBeat = fixedBeatFromChart(n.startTime, n.startBeat);
     out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
     return out;
   }
 
   if (n.type === "Voice"){
     out.fixedStartTime = fixedTimeSecFromChart(n.startTime, n.startBeat);
-    out.fixedStartBeat = fixedBeatFromChart(n.startTime, n.startBeat);
     return out;
   }
 
   if (n.type === "Image"){
     const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
     out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedStartBeat = fixedBeatFromChart(n.startTime, n.startBeat);
     out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
     return out;
   }
@@ -3542,26 +3531,21 @@ function appendFixedTimes(n){
   if ((n.type === "Long") || (n.type === "Grid" && n.isLong)){
     const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
     out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedStartBeat = fixedBeatFromChart(n.startTime, n.startBeat);
     out.fixedJudgeTime = fixedTimeSecFromChart(n.judgeTime, n.judgeBeat);
-    out.fixedJudgeBeat = fixedBeatFromChart(n.judgeTime, n.judgeBeat);
     out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
     return out;
   }
 
   if (n.type === "Grid" || n.type === "CircleTap"){
     out.fixedJudgeTime = fixedTimeSecFromChart(n.judgeTime, n.judgeBeat);
-    out.fixedJudgeBeat = fixedBeatFromChart(n.judgeTime, n.judgeBeat);
     return out;
   }
 
   if (isFinite(n.startTime) || isFinite(n.startBeat)){
     out.fixedStartTime = fixedTimeSecFromChart(n.startTime, n.startBeat);
-    out.fixedStartBeat = fixedBeatFromChart(n.startTime, n.startBeat);
   }
   if (isFinite(n.timeSec) || isFinite(n.timeBeat)){
     out.fixedTimeSec = fixedTimeSecFromChart(n.timeSec, n.timeBeat);
-    out.fixedTimeBeat = fixedBeatFromChart(n.timeSec, n.timeBeat);
   }
   return out;
 }
