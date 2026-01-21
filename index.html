@@ -8,7 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
 <style>
-  :root{--bg:#0f1115;--panel:#171b27;--muted:#8a94aa;--text:#e6e9f2;--accent:#66d9ef;--ok:#6ee7b7;--warn:#fbbf24;--bad:#f87171;--line:#26304a;}
+  :root{--bg:#0f1115;--panel:#171b27;--muted:#8a94aa;--text:#e6e9f2;--accent:#66d9ef;--ok:#6ee7b7;--warn:#fbbf24;--bad:#f87171;--line:#26304a;--mini-wave-width:600px;--mini-wave-height:220px;}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
   header{padding:12px 16px;border-bottom:1px solid var(--line);background:#0b0d12;position:sticky;top:0;z-index:5}
@@ -45,10 +45,11 @@
   .fullrow{grid-column:1 / -1}
   .wave-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .mini-side{display:flex;gap:10px;align-items:flex-start}
-  .mini-wave-panel{width:300px;padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
+  .mini-wave-panel{width:var(--mini-wave-width);min-width:var(--mini-wave-width);flex:0 0 var(--mini-wave-width);padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
   .mini-wave-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .mini-wave-toolbar .controls{display:flex;gap:6px}
   .mini-wave-btn{padding:4px 6px;border-radius:6px;font-size:12px}
+  .mini-wave-canvas{width:var(--mini-wave-width);height:var(--mini-wave-height)}
   .wave-scroll{width:98%}
   .timebadge{font-variant-numeric:tabular-nums}
   .sep{width:1px;height:22px;background:#2d3653;margin:0 4px}
@@ -418,8 +419,6 @@
 
   <!-- 오른쪽 작업영역 -->
 <section class="card">
-  <h3 style="margin:4px 0 12px">Workspace</h3>
-
   <div class="canvasWrap">
 
     <!-- 왼쪽: 그리드 -->
@@ -435,9 +434,7 @@
 
       <!-- 상단 툴바 -->
       <div class="row"
-           style="margin-top:0;justify-content:space-between;align-items:center">
-        <span class="pill">Absolute (1920×1080)</span>
-
+           style="margin:0 0 6px;justify-content:space-between;align-items:center">
         <div style="display:flex;gap:8px;align-items:center">
           <label class="mini">Aspect
             <select id="aspect">
@@ -524,7 +521,7 @@
                 <button id="miniPauseBtn" class="mini-wave-btn" disabled>Pause</button>
               </div>
             </div>
-            <canvas id="waveMini" height="110" style="width:300px"></canvas>
+            <canvas id="waveMini" class="mini-wave-canvas" width="600" height="220"></canvas>
           </div>
         </div>
 
@@ -3498,7 +3495,7 @@ function resizeWaveCanvas(){
 function resizeWaveMiniCanvas(){
   if (!waveMiniCanvas || !wctxMini) return;
   const dpr=window.devicePixelRatio||1, cssW=waveMiniCanvas.clientWidth, cssH=waveMiniCanvas.clientHeight;
-  waveMiniCanvas.width=Math.max(300,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.floor(cssH*dpr);
+  waveMiniCanvas.width=Math.max(600,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.max(220,Math.floor(cssH*dpr));
   wctxMini.setTransform(dpr,0,0,dpr,0,0);
   drawWaveMini();
 }
@@ -3760,8 +3757,22 @@ waveCanvas.addEventListener("mouseleave", ()=> waveHover = false);
 
 window.addEventListener("keydown", (e)=>{
   // 텍스트 입력 중엔 무시
-  const tag = (document.activeElement && document.activeElement.tagName) || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (document.activeElement && document.activeElement.isContentEditable)) return;
+  const active = document.activeElement;
+  const tag = (active && active.tagName) || "";
+  if (tag === "INPUT"){
+    const type = (active.type || "").toLowerCase();
+    if (type === "file" || type === "button" || type === "submit" || type === "checkbox" || type === "radio"){
+      e.preventDefault();
+      return;
+    }
+    return;
+  }
+  if (tag === "TEXTAREA" || tag === "SELECT" || (active && active.isContentEditable)) return;
+
+  if (!waveHover){
+    e.preventDefault();
+    return;
+  }
 
   // Undo/Redo: Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z)
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')){
@@ -3828,8 +3839,8 @@ if (e.code && e.code.startsWith('Numpad')){
   const sliderEditing = ($("#noteType")?.value === "Slider") && (pathPtsAbs?.length > 0);
   if (sliderEditing && !e.altKey) return;
 
-  // 파형 위에서만 동작하게 하거나, Alt 키로 강제 동작
-  if (!waveHover && !e.altKey) return;
+  // 파형 위에서만 동작하도록 제한
+  if (!waveHover) return;
 
   const D = getDuration(); if (D <= 0) return;
 
@@ -3889,6 +3900,35 @@ waveCanvas.addEventListener("click", (e) => {
     drawWave();
   }
 });
+
+if (waveMiniCanvas){
+  waveMiniCanvas.addEventListener("click", (e) => {
+    if (isPanning || dragSelecting) return;
+
+    const rect = waveMiniCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const dur = getDuration();
+    if (dur <= 0) return;
+
+    const tNow = isPlaying() ? nowSecQms() : qms(previewTimeSec);
+    const bpm = num($("#bpm").value);
+    const offset = computeOffsetSeconds();
+    const { miniStart, miniEnd } = getMiniWindowRange(tNow, bpm, offset);
+    const span = (miniEnd - miniStart) || 1;
+    const t = clamp(miniStart + (x / waveMiniCanvas.clientWidth) * span, 0, dur);
+    applyTimeFromWave(t, null);     // 시킹 + 입력칸 채우기
+    const tt = qms(t);
+
+    // 정지 중일 때는 프리뷰 커서도 즉시 갱신
+    if (!isPlaying()) {
+      previewTimeSec = tt;
+      curTimeEl.textContent = tt.toFixed(3);
+      window.getPreviewNowSec = () => tt;  // (기존 코드와의 호환용)
+      redrawBeat();
+      drawWave();
+    }
+  });
+}
 
 
 waveCanvas.addEventListener("mousemove",(e)=>{
@@ -4013,16 +4053,9 @@ function drawWave(){
   drawWaveMini();
   updateWaveScrollbar();
 }
-function drawWaveMini(){
-  if (!waveMiniCanvas || !wctxMini) return;
-  const w=waveMiniCanvas.clientWidth, h=waveMiniCanvas.clientHeight;
-  wctxMini.clearRect(0,0,w,h); wctxMini.fillStyle="#0b0f1c"; wctxMini.fillRect(0,0,w,h);
-  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
-  const bpm = num($("#bpm").value);
-  const offset = computeOffsetSeconds();
+function getMiniWindowRange(t, bpm, offset){
   let miniStart = viewStart;
   let miniEnd = viewEnd;
-
   if (bpm > 0){
     const spb = 60 / bpm;
     const windowLen = spb * 8; // 두 마디(4/4 기준)
@@ -4046,6 +4079,16 @@ function drawWaveMini(){
       }
     }
   }
+  return { miniStart, miniEnd };
+}
+function drawWaveMini(){
+  if (!waveMiniCanvas || !wctxMini) return;
+  const w=waveMiniCanvas.clientWidth, h=waveMiniCanvas.clientHeight;
+  wctxMini.clearRect(0,0,w,h); wctxMini.fillStyle="#0b0f1c"; wctxMini.fillRect(0,0,w,h);
+  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
+  const bpm = num($("#bpm").value);
+  const offset = computeOffsetSeconds();
+  const { miniStart, miniEnd } = getMiniWindowRange(t, bpm, offset);
 
   if(audioBuffer){ drawPeaksRangeMini(wctxMini,w,h,audioBuffer,miniStart,miniEnd,ampScale); }
   else{ wctxMini.fillStyle="#9aa4bb"; wctxMini.fillText("오디오 파일을 선택하세요.", 8, h/2); }
@@ -4053,8 +4096,29 @@ function drawWaveMini(){
     const span=(miniEnd-miniStart)||1;
     return ((time-miniStart)/span)*w;
   };
+  if (bpm > 0) {
+    drawMiniBeatGrid(wctxMini, w, h, miniStart, miniEnd, bpm, offset, mapX);
+  }
   if(t>=miniStart && t<=miniEnd){
     const x=mapX(t); wctxMini.strokeStyle="#ffd48a"; wctxMini.lineWidth=2; wctxMini.beginPath(); wctxMini.moveTo(x,0); wctxMini.lineTo(x,h); wctxMini.stroke();
+  }
+}
+function drawMiniBeatGrid(ctx, w, h, vStart, vEnd, bpm, off, mapX){
+  const spb = 60 / bpm;
+  let bi = Math.floor((vStart - off) / spb) - 1;
+  for(;;bi++){
+    const t = off + bi * spb;
+    if(t > vEnd) break;
+    if(t >= vStart){
+      const x = mapX(t);
+      const bar = (bi % 4 === 0);
+      ctx.strokeStyle = bar ? "rgba(102,217,239,0.75)" : "rgba(38,90,109,0.8)";
+      ctx.lineWidth = bar ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
   }
 }
 function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
