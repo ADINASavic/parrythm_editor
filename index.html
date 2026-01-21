@@ -432,28 +432,6 @@
     <!-- 오른쪽: 미리보기 + 노트 리스트 -->
     <div style="min-width:460px">
 
-      <!-- 상단 툴바 -->
-      <div class="row"
-           style="margin:0 0 6px;justify-content:space-between;align-items:center">
-        <div style="display:flex;gap:8px;align-items:center">
-          <label class="mini">Aspect
-            <select id="aspect">
-              <option value="1">1:1</option>
-              <option value="1.7777777778" selected>16:9</option>
-            </select>
-          </label>
-
-          <label class="mini" style="display:flex;gap:6px;align-items:center">
-            <input id="showCamFrame" type="checkbox" checked>
-            Cam Frame
-          </label>
-
-          <span class="muted">
-            Click: set pos / path / bullet point
-          </span>
-        </div>
-      </div>
-
       <!-- ⭐ 핵심 레이아웃 -->
       <div style="
         display:flex;
@@ -1191,8 +1169,6 @@ function refreshGridActive(){
 }
 
 /* ---------- Viewport ---------- */
-
-$("#aspect").addEventListener("change", e=>{ aspect = parseFloat(e.target.value)||1; drawView(); });
 
 function getAR(){
   const w=view.width,h=view.height,t=aspect;
@@ -4796,8 +4772,6 @@ function drawCamBadge(ctx, text, px, py){
 
 // 현재 시점 nowSec의 카메라 프레임을 그리기
 function drawCameraFrame(nowSec){
-  const show = document.querySelector("#showCamFrame")?.checked ?? true;
-  if (!show) return;
 
   const st = computeCameraState(nowSec);
   const height = Math.max(1, st.heightPx);
