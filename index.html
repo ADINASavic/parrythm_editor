@@ -45,11 +45,11 @@
   .fullrow{grid-column:1 / -1}
   .wave-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .mini-side{display:flex;gap:10px;align-items:flex-start}
-  .mini-wave-panel{width:260px;padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
+  .mini-wave-panel{width:300px;padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
   .mini-wave-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .mini-wave-toolbar .controls{display:flex;gap:6px}
   .mini-wave-btn{padding:4px 6px;border-radius:6px;font-size:12px}
-  .wave-scroll{width:220px}
+  .wave-scroll{width:98%}
   .timebadge{font-variant-numeric:tabular-nums}
   .sep{width:1px;height:22px;background:#2d3653;margin:0 4px}
   .mini{width:auto}
@@ -524,7 +524,7 @@
                 <button id="miniPauseBtn" class="mini-wave-btn" disabled>Pause</button>
               </div>
             </div>
-            <canvas id="waveMini" height="90" style="width:260px"></canvas>
+            <canvas id="waveMini" height="110" style="width:300px"></canvas>
           </div>
         </div>
 
@@ -569,15 +569,13 @@
       <button id="zoomInBtn" disabled>Zoom+</button>
       <button id="zoomOutBtn" disabled>Zoom-</button>
       <button id="fitBtn" disabled>Fit</button>
-      <label class="mini">Scroll
-        <input id="waveScroll" class="wave-scroll" type="range" min="0" max="0" value="0" step="0.001" disabled>
-      </label>
       <span class="sep"></span>
       <label class="mini">Amp <input id="ampScale" type="range" min="0.2" max="1.0" value="0.6" step="0.05"></label>
       <span class="muted">Click: seek/set time / Drag: pan / Shift+Drag: select / Ctrl+Wheel: zoom</span>
     </div>
     <div style="margin-top:8px">
-      <canvas id="wave" height="120" style="width:98%"></canvas>
+      <input id="waveScroll" class="wave-scroll" type="range" min="0" max="0" value="0" step="0.001" disabled>
+      <canvas id="wave" height="70" style="width:98%;margin-top:6px"></canvas>
       <audio id="audio" style="display:none" preload="metadata" crossorigin="anonymous"></audio>
     </div>
   </section>
@@ -3296,6 +3294,7 @@ const KEY_PAN_FRAC_FAST   = 0.20; // ← Alt+Arrow: 20%
 const KEY_PAN_FRAC_SLOW   = 0.01; // ← Ctrl+Arrow: 1%
 
 let previewTimeSec = 0;  // 정지 중 커서가 보여줄 시각(초)
+let miniWindowStartSec = null;
 function isPlaying(){
   return (AC_enabled && !!AC_src) || (!AC_enabled && !audioEl.paused && !audioEl.ended);
 }
@@ -3499,7 +3498,7 @@ function resizeWaveCanvas(){
 function resizeWaveMiniCanvas(){
   if (!waveMiniCanvas || !wctxMini) return;
   const dpr=window.devicePixelRatio||1, cssW=waveMiniCanvas.clientWidth, cssH=waveMiniCanvas.clientHeight;
-  waveMiniCanvas.width=Math.max(220,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.floor(cssH*dpr);
+  waveMiniCanvas.width=Math.max(300,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.floor(cssH*dpr);
   wctxMini.setTransform(dpr,0,0,dpr,0,0);
   drawWaveMini();
 }
@@ -3689,6 +3688,38 @@ function zoomAt(c, f){
 
   ensureViewBounds();
   drawWave();
+}
+
+function updateWaveScrollbar(){
+  if (!waveScroll) return;
+  const D = getDuration();
+  const span = viewEnd - viewStart;
+  if (!isFinite(D) || D <= 0 || !isFinite(span) || span <= 0){
+    waveScroll.disabled = true;
+    waveScroll.min = 0;
+    waveScroll.max = 0;
+    waveScroll.value = 0;
+    return;
+  }
+  const maxStart = Math.max(0, D - span);
+  waveScroll.disabled = false;
+  waveScroll.min = 0;
+  waveScroll.max = maxStart;
+  waveScroll.step = Math.max(0.001, span / 500);
+  waveScroll.value = clamp(viewStart, 0, maxStart);
+}
+
+if (waveScroll){
+  waveScroll.addEventListener("input", (e)=>{
+    const D = getDuration();
+    const span = viewEnd - viewStart;
+    const maxStart = Math.max(0, D - span);
+    const nextStart = clamp(parseFloat(e.target.value || "0"), 0, maxStart);
+    viewStart = nextStart;
+    viewEnd = viewStart + span;
+    ensureViewBounds();
+    drawWave();
+  });
 }
 
 function updateWaveScrollbar(){
@@ -3986,14 +4017,43 @@ function drawWaveMini(){
   if (!waveMiniCanvas || !wctxMini) return;
   const w=waveMiniCanvas.clientWidth, h=waveMiniCanvas.clientHeight;
   wctxMini.clearRect(0,0,w,h); wctxMini.fillStyle="#0b0f1c"; wctxMini.fillRect(0,0,w,h);
-  if(audioBuffer){ drawPeaksRangeMini(wctxMini,w,h,audioBuffer,viewStart,viewEnd,ampScale); }
+  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
+  const bpm = num($("#bpm").value);
+  const offset = computeOffsetSeconds();
+  let miniStart = viewStart;
+  let miniEnd = viewEnd;
+
+  if (bpm > 0){
+    const spb = 60 / bpm;
+    const windowLen = spb * 8; // 두 마디(4/4 기준)
+    if (!isFinite(miniWindowStartSec) || miniWindowStartSec === null){
+      miniWindowStartSec = offset + Math.floor((t - offset) / windowLen) * windowLen;
+    }
+    if (t < miniWindowStartSec || t >= (miniWindowStartSec + windowLen)){
+      miniWindowStartSec = offset + Math.floor((t - offset) / windowLen) * windowLen;
+    }
+    miniStart = miniWindowStartSec;
+    miniEnd = miniWindowStartSec + windowLen;
+    const duration = getDuration();
+    if (duration > 0){
+      if (miniEnd > duration){
+        miniEnd = duration;
+        miniStart = Math.max(0, miniEnd - windowLen);
+      }
+      if (miniStart < 0){
+        miniStart = 0;
+        miniEnd = Math.min(duration, miniStart + windowLen);
+      }
+    }
+  }
+
+  if(audioBuffer){ drawPeaksRangeMini(wctxMini,w,h,audioBuffer,miniStart,miniEnd,ampScale); }
   else{ wctxMini.fillStyle="#9aa4bb"; wctxMini.fillText("오디오 파일을 선택하세요.", 8, h/2); }
   const mapX = (time) => {
-    const span=(viewEnd-viewStart)||1;
-    return ((time-viewStart)/span)*w;
+    const span=(miniEnd-miniStart)||1;
+    return ((time-miniStart)/span)*w;
   };
-  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
-  if(t>=viewStart && t<=viewEnd){
+  if(t>=miniStart && t<=miniEnd){
     const x=mapX(t); wctxMini.strokeStyle="#ffd48a"; wctxMini.lineWidth=2; wctxMini.beginPath(); wctxMini.moveTo(x,0); wctxMini.lineTo(x,h); wctxMini.stroke();
   }
 }
@@ -4003,15 +4063,21 @@ function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
   const centerY = h * 0.5;
   const gain = Math.min(1, ampScale * 1.1);
   const span = Math.max(1e-6, t1 - t0);
-  const samplesPerPixel = Math.max(16, Math.floor((span * sr) / w));
-  const xStep = 1;
+  const samplesPerPixel = Math.max(12, Math.floor((span * sr) / w));
 
+  ctx.fillStyle = "rgba(150,215,255,0.55)";
+  ctx.strokeStyle = "rgba(200,235,255,0.7)";
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = "rgba(200,235,255,0.85)";
 
-  for(let x = 0; x < w; x += xStep){
+  ctx.beginPath();
+  ctx.moveTo(0, centerY);
+
+  for(let x = 0; x <= w; x++){
     const base = Math.floor((t0 * sr) + x * samplesPerPixel);
-    if(base >= data.length) break;
+    if(base >= data.length) {
+      ctx.lineTo(x, centerY);
+      continue;
+    }
 
     let min =  1.0;
     let max = -1.0;
@@ -4025,42 +4091,13 @@ function drawPeaksRangeMini(ctx, w, h, audioBuffer, t0, t1, ampScale){
 
     const amp = Math.max(Math.abs(min), Math.abs(max));
     const yTop = centerY - amp * centerY * gain;
-
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, centerY);
-    ctx.lineTo(x + 0.5, yTop);
-    ctx.stroke();
+    ctx.lineTo(x, yTop);
   }
 
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "rgba(255,210,140,0.75)";
-  const THRESHOLD = 0.08;
-
-  for(let x = 0; x < w; x += 2){
-    const base = Math.floor((t0 * sr) + x * samplesPerPixel);
-    if(base >= data.length) break;
-
-    let sumSq = 0;
-    let count = 0;
-
-    for(let i = 0; i < samplesPerPixel; i++){
-      const v = data[base + i];
-      if(v === undefined) break;
-      sumSq += v * v;
-      count++;
-    }
-
-    if(count === 0) continue;
-    let rms = Math.sqrt(sumSq / count);
-    if(rms < THRESHOLD) continue;
-    rms = (rms - THRESHOLD) / (1.0 - THRESHOLD);
-    const y = centerY - rms * centerY * gain;
-
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, centerY);
-    ctx.lineTo(x + 0.5, y);
-    ctx.stroke();
-  }
+  ctx.lineTo(w, centerY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
 
   ctx.lineWidth = 1;
   ctx.strokeStyle = "#334";
@@ -4089,7 +4126,7 @@ function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
      1) 전체 대역 envelope (참고용, 과하지 않게)
      ================================================= */
   ctx.lineWidth = 1;
-  ctx.strokeStyle = "rgba(155,220,255,0.5)";
+  ctx.strokeStyle = "rgba(155,220,255,0.35)";
 
   for(let x = 0; x < w; x += xStep){
     const base = Math.floor((t0 * sr) + x * samplesPerPixel);
@@ -4118,7 +4155,7 @@ function drawPeaksRange(ctx, w, h, audioBuffer, t0, t1, ampScale){
      2) 저음 강조 overlay (임계 기반, 핵심 부분)
      ================================================= */
   ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(255,200,120,0.85)";
+  ctx.strokeStyle = "rgba(255,200,120,0.6)";
 
   // 🔑 저음/킥 강조 임계값
   // 곡에 따라 0.06 ~ 0.12 사이가 적당
