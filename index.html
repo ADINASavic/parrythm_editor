@@ -3757,8 +3757,22 @@ waveCanvas.addEventListener("mouseleave", ()=> waveHover = false);
 
 window.addEventListener("keydown", (e)=>{
   // 텍스트 입력 중엔 무시
-  const tag = (document.activeElement && document.activeElement.tagName) || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (document.activeElement && document.activeElement.isContentEditable)) return;
+  const active = document.activeElement;
+  const tag = (active && active.tagName) || "";
+  if (tag === "INPUT"){
+    const type = (active.type || "").toLowerCase();
+    if (type === "file" || type === "button" || type === "submit" || type === "checkbox" || type === "radio"){
+      e.preventDefault();
+      return;
+    }
+    return;
+  }
+  if (tag === "TEXTAREA" || tag === "SELECT" || (active && active.isContentEditable)) return;
+
+  if (!waveHover){
+    e.preventDefault();
+    return;
+  }
 
   // Undo/Redo: Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z)
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')){
@@ -3825,8 +3839,8 @@ if (e.code && e.code.startsWith('Numpad')){
   const sliderEditing = ($("#noteType")?.value === "Slider") && (pathPtsAbs?.length > 0);
   if (sliderEditing && !e.altKey) return;
 
-  // 파형 위에서만 동작하게 하거나, Alt 키로 강제 동작
-  if (!waveHover && !e.altKey) return;
+  // 파형 위에서만 동작하도록 제한
+  if (!waveHover) return;
 
   const D = getDuration(); if (D <= 0) return;
 
@@ -3886,6 +3900,35 @@ waveCanvas.addEventListener("click", (e) => {
     drawWave();
   }
 });
+
+if (waveMiniCanvas){
+  waveMiniCanvas.addEventListener("click", (e) => {
+    if (isPanning || dragSelecting) return;
+
+    const rect = waveMiniCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const dur = getDuration();
+    if (dur <= 0) return;
+
+    const tNow = isPlaying() ? nowSecQms() : qms(previewTimeSec);
+    const bpm = num($("#bpm").value);
+    const offset = computeOffsetSeconds();
+    const { miniStart, miniEnd } = getMiniWindowRange(tNow, bpm, offset);
+    const span = (miniEnd - miniStart) || 1;
+    const t = clamp(miniStart + (x / waveMiniCanvas.clientWidth) * span, 0, dur);
+    applyTimeFromWave(t, null);     // 시킹 + 입력칸 채우기
+    const tt = qms(t);
+
+    // 정지 중일 때는 프리뷰 커서도 즉시 갱신
+    if (!isPlaying()) {
+      previewTimeSec = tt;
+      curTimeEl.textContent = tt.toFixed(3);
+      window.getPreviewNowSec = () => tt;  // (기존 코드와의 호환용)
+      redrawBeat();
+      drawWave();
+    }
+  });
+}
 
 
 waveCanvas.addEventListener("mousemove",(e)=>{
@@ -4010,16 +4053,9 @@ function drawWave(){
   drawWaveMini();
   updateWaveScrollbar();
 }
-function drawWaveMini(){
-  if (!waveMiniCanvas || !wctxMini) return;
-  const w=waveMiniCanvas.clientWidth, h=waveMiniCanvas.clientHeight;
-  wctxMini.clearRect(0,0,w,h); wctxMini.fillStyle="#0b0f1c"; wctxMini.fillRect(0,0,w,h);
-  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
-  const bpm = num($("#bpm").value);
-  const offset = computeOffsetSeconds();
+function getMiniWindowRange(t, bpm, offset){
   let miniStart = viewStart;
   let miniEnd = viewEnd;
-
   if (bpm > 0){
     const spb = 60 / bpm;
     const windowLen = spb * 8; // 두 마디(4/4 기준)
@@ -4043,6 +4079,16 @@ function drawWaveMini(){
       }
     }
   }
+  return { miniStart, miniEnd };
+}
+function drawWaveMini(){
+  if (!waveMiniCanvas || !wctxMini) return;
+  const w=waveMiniCanvas.clientWidth, h=waveMiniCanvas.clientHeight;
+  wctxMini.clearRect(0,0,w,h); wctxMini.fillStyle="#0b0f1c"; wctxMini.fillRect(0,0,w,h);
+  const t = isPlaying() ? nowSecQms() : qms(previewTimeSec);
+  const bpm = num($("#bpm").value);
+  const offset = computeOffsetSeconds();
+  const { miniStart, miniEnd } = getMiniWindowRange(t, bpm, offset);
 
   if(audioBuffer){ drawPeaksRangeMini(wctxMini,w,h,audioBuffer,miniStart,miniEnd,ampScale); }
   else{ wctxMini.fillStyle="#9aa4bb"; wctxMini.fillText("오디오 파일을 선택하세요.", 8, h/2); }
