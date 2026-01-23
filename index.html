@@ -582,6 +582,7 @@
 </label>
 
       <label class="mini"><input id="snap" type="checkbox" checked> Snap</label>
+      <label class="mini"><input id="syncBeatSeek" type="checkbox"> Seek on Beat Edit</label>
       <span class="sep"></span>
       <button id="zoomInBtn" disabled>Zoom+</button>
       <button id="zoomOutBtn" disabled>Zoom-</button>
@@ -1479,6 +1480,36 @@ $("#noteType").addEventListener("change", e=>{
   updateBulletStageLabel();
 });
 
+function bindBeatInputSync(beatId, secId){
+  const beatEl = $(beatId);
+  const secEl = $(secId);
+  if (!beatEl || !secEl) return;
+  beatEl.addEventListener("change", () => {
+    const beat = num(beatEl.value);
+    if (!isFinite(beat)) return;
+    const offset = computeOffsetSeconds();
+    const secMusical = tempoBeatToSec(beat);
+    const target = secMusical + offset;
+    secEl.value = secMusical.toFixed(3);
+    const shouldSeek = $("#syncBeatSeek")?.checked === true;
+    if (shouldSeek) {
+      const snapped = $("#snap").checked ? snapTime(target) : qms(target);
+      if (typeof seekAccurate === "function") seekAccurate(snapped);
+      else audioEl.currentTime = snapped;
+    }
+    redrawBeat();
+    drawWave();
+  });
+}
+
+bindBeatInputSync("judgeBeat", "judgeTimeSec");
+bindBeatInputSync("circleJudgeBeat", "circleJudgeSec");
+bindBeatInputSync("sliderStartBeat", "sliderStartSec");
+bindBeatInputSync("bulletStartBeat", "bulletStartSec");
+bindBeatInputSync("camStartBeat", "camStartSec");
+bindBeatInputSync("voiceStartBeat", "voiceStartSec");
+bindBeatInputSync("imgStartBeat", "imgStartSec");
+
 const waveNoteType = $("#waveNoteType");
 if (waveNoteType) {
   waveNoteType.value = $("#noteType").value;
@@ -1847,17 +1878,15 @@ function drawCircleAbs(ctx, abs, radiusPx, stroke="#fff", fill=null, lineW=2){
 
 function addVoice(){
   if (editIndex!==null) return;
-  // prefer current preview/playhead time for new notes
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const musicalNow = nowPlayback - computeOffsetSeconds();
-  const beatNow = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#voiceStartSec").value);
+  const startBeat = num($("#voiceStartBeat").value);
 
   const note = {
     type: "Voice",
     fmodEvent: ($("#voiceEventPath").value || "").trim(),
 
-    startTime:  musicalNow,
-    startBeat:  beatNow,
+    startTime,
+    startBeat,
 
     fadeInSec:  num($("#voiceFadeInSec").value),
     fadeOutSec: num($("#voiceFadeOutSec").value),
@@ -1877,15 +1906,14 @@ function addImage(){
     return { w: Math.max(1, parseFloat(ws)||512), h: Math.max(1, parseFloat(hs)||512) };
   })($("#imgSize").value);
 
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const musicalNow = nowPlayback - computeOffsetSeconds();
-  const beatNow = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#imgStartSec").value);
+  const startBeat = num($("#imgStartBeat").value);
 
   const note = {
     type: "Image",
     key: ($("#imgKey").value || "").trim(),
-    startTime:    musicalNow,
-    startBeat:    beatNow,
+    startTime,
+    startBeat,
     duration:     num($("#imgDurSec").value),
     durationBeats:num($("#imgDurBeats").value),
 
@@ -2632,10 +2660,8 @@ function addGrid(){
   if(editIndex!==null) return;
   const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
   const c=parseInt(cs||"1"), r=parseInt(rs||"1");
-  // use preview/playhead time to set timing so note follows playhead
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const judgeTime = nowPlayback - computeOffsetSeconds();
-  const judgeBeat = snappedBeatsFromSec(nowPlayback);
+  const judgeTime = num($("#judgeTimeSec").value);
+  const judgeBeat = num($("#judgeBeat").value);
   const noteType = $("#noteType").value;
 
   if (noteType === "Trail") {
@@ -2682,9 +2708,8 @@ function addGrid(){
 }
 function addCircle(){
   if(editIndex!==null) return;
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const judgeTime = nowPlayback - computeOffsetSeconds();
-  const judgeBeat = snappedBeatsFromSec(nowPlayback);
+  const judgeTime = num($("#circleJudgeSec").value);
+  const judgeBeat = num($("#circleJudgeBeat").value);
   const [xs,ys] = ($("#circlePos").value||"960,540").split(",");
   const x=clamp(parseFloat(xs||"960"),0,REF_W), y=clamp(parseFloat(ys||"540"),0,REF_H);
   pushNote({type:"CircleTap", absPos:{x,y}, judgeTime, judgeBeat});
@@ -2692,9 +2717,8 @@ function addCircle(){
 function addSlider(){
   if(editIndex!==null) return;
   if(pathPtsAbs.length<2){ alert("Slider path needs at least 2 points"); return; }
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const startTime = nowPlayback - computeOffsetSeconds();
-  const startBeat = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#sliderStartSec").value);
+  const startBeat = num($("#sliderStartBeat").value);
   const duration=num($("#sliderDurSec").value), durationBeats=num($("#sliderDurBeats").value);
   pushNote({type:"Slider", absPath: pathPtsAbs.map(p=>({x:Math.round(p.x),y:Math.round(p.y)})),
             startTime, startBeat, duration, durationBeats, sliderCurved: $("#sliderCurved")?.checked === true
@@ -2721,9 +2745,8 @@ function addBullet(){
   const spawn = parseAbsXY($("#bulletSpawn").value,"192,540");
   const dock  = parseAbsXY($("#bulletDock").value,"960,540");
   const desp  = parseAbsXY($("#bulletDespawn").value,"1728,540");
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const startSec = nowPlayback - computeOffsetSeconds();
-  const startBeat = snappedBeatsFromSec(nowPlayback);
+  const startSec = num($("#bulletStartSec").value);
+  const startBeat = num($("#bulletStartBeat").value);
   const toDockSec=num($("#bulletToDockSec").value), toDockBeats=num($("#bulletToDockBeats").value);
   const dockToDespawnSec=num($("#bulletDockToDespawnSec").value), dockToDespawnBeats=num($("#bulletDockToDespawnBeats").value);
     pushNote({
@@ -2751,10 +2774,8 @@ function addBullet(){
 
 function addCamera(){
   if(editIndex!==null) return;
-  // Use preview/playhead time as default start for newly added camera notes
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const startTime = nowPlayback - computeOffsetSeconds();
-  const startBeat = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#camStartSec").value);
+  const startBeat = num($("#camStartBeat").value);
   const duration  = num($("#camDurSec").value);
   const durationBeats = num($("#camDurBeats").value);
 
