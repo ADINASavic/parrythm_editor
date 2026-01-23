@@ -582,6 +582,7 @@
 </label>
 
       <label class="mini"><input id="snap" type="checkbox" checked> Snap</label>
+      <label class="mini"><input id="syncBeatSeek" type="checkbox"> Seek on Beat Edit</label>
       <span class="sep"></span>
       <button id="zoomInBtn" disabled>Zoom+</button>
       <button id="zoomOutBtn" disabled>Zoom-</button>
@@ -1479,6 +1480,66 @@ $("#noteType").addEventListener("change", e=>{
   updateBulletStageLabel();
 });
 
+function bindBeatInputSync(beatId, secId){
+  const beatEl = $(beatId);
+  const secEl = $(secId);
+  if (!beatEl || !secEl) return;
+  beatEl.addEventListener("change", () => {
+    const beat = num(beatEl.value);
+    if (!isFinite(beat)) return;
+    const offset = computeOffsetSeconds();
+    const secMusical = tempoBeatToSec(beat);
+    const target = secMusical + offset;
+    secEl.value = secMusical.toFixed(3);
+    const shouldSeek = $("#syncBeatSeek")?.checked === true;
+    if (shouldSeek) {
+      const snapped = $("#snap").checked ? snapTime(target) : qms(target);
+      if (typeof seekAccurate === "function") seekAccurate(snapped);
+      else audioEl.currentTime = snapped;
+    }
+    redrawBeat();
+    drawWave();
+  });
+}
+
+function bindSecInputSync(secId, beatId){
+  const secEl = $(secId);
+  const beatEl = $(beatId);
+  if (!secEl || !beatEl) return;
+  secEl.addEventListener("change", () => {
+    const secMusical = num(secEl.value);
+    if (!isFinite(secMusical)) return;
+    const offset = computeOffsetSeconds();
+    const target = secMusical + offset;
+    const beat = tempoSecToBeat(secMusical);
+    beatEl.value = beat.toFixed(3);
+    const shouldSeek = $("#syncBeatSeek")?.checked === true;
+    if (shouldSeek) {
+      const snapped = $("#snap").checked ? snapTime(target) : qms(target);
+      if (typeof seekAccurate === "function") seekAccurate(snapped);
+      else audioEl.currentTime = snapped;
+    }
+    redrawBeat();
+    drawWave();
+  });
+}
+
+bindBeatInputSync("judgeBeat", "judgeTimeSec");
+bindBeatInputSync("circleJudgeBeat", "circleJudgeSec");
+bindBeatInputSync("sliderStartBeat", "sliderStartSec");
+bindBeatInputSync("bulletStartBeat", "bulletStartSec");
+bindBeatInputSync("camStartBeat", "camStartSec");
+bindBeatInputSync("voiceStartBeat", "voiceStartSec");
+bindBeatInputSync("imgStartBeat", "imgStartSec");
+
+bindSecInputSync("judgeTimeSec", "judgeBeat");
+bindSecInputSync("circleJudgeSec", "circleJudgeBeat");
+bindSecInputSync("sliderStartSec", "sliderStartBeat");
+bindSecInputSync("bulletStartSec", "bulletStartBeat");
+bindSecInputSync("camStartSec", "camStartBeat");
+bindSecInputSync("voiceStartSec", "voiceStartBeat");
+bindSecInputSync("imgStartSec", "imgStartBeat");
+
 const waveNoteType = $("#waveNoteType");
 if (waveNoteType) {
   waveNoteType.value = $("#noteType").value;
@@ -1847,17 +1908,15 @@ function drawCircleAbs(ctx, abs, radiusPx, stroke="#fff", fill=null, lineW=2){
 
 function addVoice(){
   if (editIndex!==null) return;
-  // prefer current preview/playhead time for new notes
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const musicalNow = nowPlayback - computeOffsetSeconds();
-  const beatNow = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#voiceStartSec").value);
+  const startBeat = num($("#voiceStartBeat").value);
 
   const note = {
     type: "Voice",
     fmodEvent: ($("#voiceEventPath").value || "").trim(),
 
-    startTime:  musicalNow,
-    startBeat:  beatNow,
+    startTime,
+    startBeat,
 
     fadeInSec:  num($("#voiceFadeInSec").value),
     fadeOutSec: num($("#voiceFadeOutSec").value),
@@ -1877,15 +1936,14 @@ function addImage(){
     return { w: Math.max(1, parseFloat(ws)||512), h: Math.max(1, parseFloat(hs)||512) };
   })($("#imgSize").value);
 
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const musicalNow = nowPlayback - computeOffsetSeconds();
-  const beatNow = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#imgStartSec").value);
+  const startBeat = num($("#imgStartBeat").value);
 
   const note = {
     type: "Image",
     key: ($("#imgKey").value || "").trim(),
-    startTime:    musicalNow,
-    startBeat:    beatNow,
+    startTime,
+    startBeat,
     duration:     num($("#imgDurSec").value),
     durationBeats:num($("#imgDurBeats").value),
 
@@ -2632,10 +2690,8 @@ function addGrid(){
   if(editIndex!==null) return;
   const [cs,rs] = ($("#cellCR").value||"1,1").split(",");
   const c=parseInt(cs||"1"), r=parseInt(rs||"1");
-  // use preview/playhead time to set timing so note follows playhead
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const judgeTime = nowPlayback - computeOffsetSeconds();
-  const judgeBeat = snappedBeatsFromSec(nowPlayback);
+  const judgeTime = num($("#judgeTimeSec").value);
+  const judgeBeat = num($("#judgeBeat").value);
   const noteType = $("#noteType").value;
 
   if (noteType === "Trail") {
@@ -2682,9 +2738,8 @@ function addGrid(){
 }
 function addCircle(){
   if(editIndex!==null) return;
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const judgeTime = nowPlayback - computeOffsetSeconds();
-  const judgeBeat = snappedBeatsFromSec(nowPlayback);
+  const judgeTime = num($("#circleJudgeSec").value);
+  const judgeBeat = num($("#circleJudgeBeat").value);
   const [xs,ys] = ($("#circlePos").value||"960,540").split(",");
   const x=clamp(parseFloat(xs||"960"),0,REF_W), y=clamp(parseFloat(ys||"540"),0,REF_H);
   pushNote({type:"CircleTap", absPos:{x,y}, judgeTime, judgeBeat});
@@ -2692,9 +2747,8 @@ function addCircle(){
 function addSlider(){
   if(editIndex!==null) return;
   if(pathPtsAbs.length<2){ alert("Slider path needs at least 2 points"); return; }
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const startTime = nowPlayback - computeOffsetSeconds();
-  const startBeat = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#sliderStartSec").value);
+  const startBeat = num($("#sliderStartBeat").value);
   const duration=num($("#sliderDurSec").value), durationBeats=num($("#sliderDurBeats").value);
   pushNote({type:"Slider", absPath: pathPtsAbs.map(p=>({x:Math.round(p.x),y:Math.round(p.y)})),
             startTime, startBeat, duration, durationBeats, sliderCurved: $("#sliderCurved")?.checked === true
@@ -2721,9 +2775,8 @@ function addBullet(){
   const spawn = parseAbsXY($("#bulletSpawn").value,"192,540");
   const dock  = parseAbsXY($("#bulletDock").value,"960,540");
   const desp  = parseAbsXY($("#bulletDespawn").value,"1728,540");
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const startSec = nowPlayback - computeOffsetSeconds();
-  const startBeat = snappedBeatsFromSec(nowPlayback);
+  const startSec = num($("#bulletStartSec").value);
+  const startBeat = num($("#bulletStartBeat").value);
   const toDockSec=num($("#bulletToDockSec").value), toDockBeats=num($("#bulletToDockBeats").value);
   const dockToDespawnSec=num($("#bulletDockToDespawnSec").value), dockToDespawnBeats=num($("#bulletDockToDespawnBeats").value);
     pushNote({
@@ -2751,10 +2804,8 @@ function addBullet(){
 
 function addCamera(){
   if(editIndex!==null) return;
-  // Use preview/playhead time as default start for newly added camera notes
-  const nowPlayback = qms((typeof getPreviewNowSec === 'function') ? getPreviewNowSec() : 0);
-  const startTime = nowPlayback - computeOffsetSeconds();
-  const startBeat = snappedBeatsFromSec(nowPlayback);
+  const startTime = num($("#camStartSec").value);
+  const startBeat = num($("#camStartBeat").value);
   const duration  = num($("#camDurSec").value);
   const durationBeats = num($("#camDurBeats").value);
 
@@ -3950,6 +4001,7 @@ function syncUiAccurate(){
     const bi = beatInfoAt(t);
     curBeatEl.textContent = bi.valid ? bi.text : "-";
     window.getPreviewNowSec = () => t;   // 미리보기 타임 소스 통합
+    syncInputsFromPlayback(t);
     drawWave();
 
     // 끝났으면 루프 종료
@@ -3979,7 +4031,11 @@ let _rafId = null;
 
 
 audioEl.addEventListener("seeking", drawWave);
-audioEl.addEventListener("seeked", drawWave);
+audioEl.addEventListener("seeked", () => {
+  drawWave();
+  const t = qms(audioEl.currentTime || 0);
+  syncInputsFromPlayback(t);
+});
 audioEl.addEventListener("ratechange", drawWave);
 
 function resizeWaveCanvas(){
@@ -4086,6 +4142,7 @@ audioEl.addEventListener("timeupdate", ()=>{
   applyStyleEvents(t);
   curTimeEl.textContent = t.toFixed(3);
   window.getPreviewNowSec = () => t;
+  syncInputsFromPlayback(t);
   const bi=beatInfoAt(t);
   curBeatEl.textContent = bi.valid?bi.text:"-";
   drawWave();
@@ -4109,6 +4166,7 @@ audioEl.addEventListener("pause", () => {
   previewTimeSec = t;
   curTimeEl.textContent = t.toFixed(3);
   window.getPreviewNowSec = () => t;
+  syncInputsFromPlayback(t);
   redrawBeat();
   drawWave();
 });
@@ -4358,6 +4416,7 @@ if (e.code && e.code.startsWith('Numpad')){
     curTimeEl.textContent = previewTimeSec.toFixed(3);
     window.getPreviewNowSec = () => previewTimeSec;
     applyStyleEvents(previewTimeSec);
+    syncInputsFromPlayback(previewTimeSec);
     redrawBeat();
     drawWave();
   }
@@ -4899,27 +4958,7 @@ function applyTimeFromWave(t0, t1){
 
   // ✅ 인자 이름과 본문 변수 통일 (secPlayback 사용)
   function fillSingleTime(secPlayback){
-    const typ = $("#noteType").value;
-    const secMusical = secPlayback - off;                // UI의 "sec"은 음악적 시각으로 표기
-    const secStr     = qms(secMusical).toFixed(3);
-    const beatStr    = snappedBeatsFromSec(secPlayback).toFixed(3);
-
-    if (typ === "Grid") {
-      $("#judgeTimeSec").value = secStr;
-      $("#judgeBeat").value = beatStr;
-    } else if (typ === "CircleTap") {
-      $("#circleJudgeSec").value = secStr;
-      $("#circleJudgeBeat").value = beatStr;
-    } else if (typ === "Slider") {
-      $("#sliderStartSec").value = secStr;
-      $("#sliderStartBeat").value = beatStr;
-    } else if (typ === "Bullet") {
-      $("#bulletStartSec").value = secStr;
-      $("#bulletStartBeat").value = beatStr;
-    } else if (typ === "Camera") {
-      $("#camStartSec").value = secStr;
-      $("#camStartBeat").value = beatStr;
-    }
+    syncInputsFromPlayback(secPlayback);
   }
 
   function fillRange(secA, secB){
@@ -4963,6 +5002,42 @@ function applyTimeFromWave(t0, t1){
 
   redrawBeat();
   drawWave();
+}
+
+function syncInputsFromPlayback(secPlayback){
+  const typ = $("#noteType").value;
+  const off = computeOffsetSeconds();
+  const secMusical = secPlayback - off;                // UI의 "sec"은 음악적 시각으로 표기
+  const secStr     = qms(secMusical).toFixed(3);
+  const beatStr    = snappedBeatsFromSec(secPlayback).toFixed(3);
+
+  if (typ === "Grid" || typ === "Trail" || typ === "Long") {
+    $("#judgeTimeSec").value = secStr;
+    $("#judgeBeat").value = beatStr;
+  } else if (typ === "CircleTap") {
+    $("#circleJudgeSec").value = secStr;
+    $("#circleJudgeBeat").value = beatStr;
+  } else if (typ === "Slider") {
+    $("#sliderStartSec").value = secStr;
+    $("#sliderStartBeat").value = beatStr;
+  } else if (typ === "Bullet") {
+    $("#bulletStartSec").value = secStr;
+    $("#bulletStartBeat").value = beatStr;
+  } else if (typ === "Camera") {
+    $("#camStartSec").value = secStr;
+    $("#camStartBeat").value = beatStr;
+  } else if (typ === "Voice") {
+    $("#voiceStartSec").value = secStr;
+    $("#voiceStartBeat").value = beatStr;
+  } else if (typ === "Image") {
+    $("#imgStartSec").value = secStr;
+    $("#imgStartBeat").value = beatStr;
+  } else if (typ === "Line") {
+    const timeSecEl = document.getElementById("stTimeSec");
+    const timeBeatEl = document.getElementById("stTimeBeat");
+    if (timeSecEl) timeSecEl.value = secStr;
+    if (timeBeatEl) timeBeatEl.value = beatStr;
+  }
 }
 function snapTime(t){
   if (!$("#snap").checked) return t;
