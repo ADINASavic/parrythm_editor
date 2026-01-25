@@ -1,0 +1,569 @@
+<header><h1>Rhythm Chart Editor (Absolute 1920×1080)<span id="statusBadge" class="status-badge">Idle</span></h1></header>
+
+<div class="wrap">
+  <!-- 왼쪽 패널 -->
+  <section class="card">
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <h3 style="margin:4px 0 8px">Add/Edit Note</h3>
+    <div class="row"><label>Type</label>
+      <select id="noteType">
+        <option value="Grid">Grid</option>
+        <option value="Trail">Trail</option>
+        <option value="Long">Long</option>
+        <option value="CircleTap">CircleTap</option>
+        <option value="Slider">Slider</option>
+        <option value="Bullet">Bullet</option>
+        <option value="Camera">Camera</option>
+        <option value="Line">Line</option>
+        <option value="Voice">Voice</option>
+        <option value="Image">Image</option>
+      </select>
+    </div>
+
+    <!-- Grid -->
+    <div id="gridInputs">
+      <div class="hint">오른쪽 3x3 Grid를 클릭해도 설정됩니다.</div>
+      <div class="row"><label>Cell (c,r)</label><input id="cellCR" type="text" value="1,1"></div>
+      <div class="row"><label>Time (sec)</label><input id="judgeTimeSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>Time (beats)</label><input id="judgeBeat" type="number" step="0.001" value="1.000"></div>
+      <div id="longInputs" style="display:none">
+        <div class="hint">Longnote: 지속시간을 입력하면 홀드 길이가 결정됩니다.</div>
+        <div class="row"><label>Duration (sec)</label><input id="longDurSec" type="number" step="0.001" value="1.000"></div>
+        <div class="row"><label>Duration (beats)</label><input id="longDurBeats" type="number" step="0.001" value="1.000"></div>
+      </div>
+      <button id="btnAddGrid" class="primary" onclick="addGrid()">Add Grid</button>
+    </div>
+
+    <!-- Circle -->
+    <div id="circleInputs" style="display:none">
+      <div class="hint">Absolute 캔버스를 클릭해 좌표를 잡을 수 있습니다. (1920×1080)</div>
+      <div class="row"><label>Pos (x,y)</label><input id="circlePos" type="text" value="960,540"></div>
+      <div class="row"><label>Time (sec)</label><input id="circleJudgeSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>Time (beats)</label><input id="circleJudgeBeat" type="number" step="0.001" value="1.000"></div>
+      <button id="btnAddCircle" class="primary" onclick="addCircle()">Add CircleTap</button>
+    </div>
+
+    <!-- Slider -->
+    <div id="sliderInputs" style="display:none">
+      <div class="hint">Absolute 캔버스에서 점을 찍어 경로를 만듭니다. 숫자로도 수정 가능.</div>
+      <div class="row"><label>Start (sec)</label><input id="sliderStartSec" type="number" step="0.001" value="2.000"></div>
+      <div class="row"><label>Start (beats)</label><input id="sliderStartBeat" type="number" step="0.001" value="2.000"></div>
+      <div class="row"><label>Duration (sec)</label><input id="sliderDurSec" type="number" step="0.001" value="0.800"></div>
+      <div class="row"><label>Duration (beats)</label><input id="sliderDurBeats" type="number" step="0.001" value="0.800"></div>
+      <label class="mini">
+  <input id="sliderCurved" type="checkbox">
+  Curve (Bezier)
+</label>
+
+      <div class="row two">
+        <div><label>Point Index</label><input id="ptIndex" type="number" value="0" step="1"></div>
+        <div><label>Point (x,y)</label><input id="ptXY" type="text" value="960,540"></div>
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button onclick="finishPath()">Finish Path</button>
+        <button class="warn" onclick="clearPath()">Clear Path</button>
+        <button onclick="applyPointXY()">Set Point XY</button>
+        <button onclick="insertPointAfter()">Insert After</button>
+        <button class="bad" onclick="removePoint()">Remove Point</button>
+        <span class="hint">Path pts: <span id="pathCount">0</span></span>
+        <div class="row" style="align-items:flex-start">
+        <label>Points</label>
+        <div style="flex:1">
+            <div id="sliderPointList"
+                style="max-height:160px;overflow:auto;border:1px solid #2d3653;border-radius:8px;padding:6px;font-size:12px"></div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+            <button type="button" id="ptPrevBtn">Prev (PgUp)</button>
+            <button type="button" id="ptNextBtn">Next (PgDn)</button>
+            <span class="muted" style="margin-left:auto">Keys: ← → ↑ ↓ (Shift=20px), PgUp/PgDn, Enter=Apply</span>
+            </div>
+        </div>
+        </div>
+      </div>
+      <div class="hint">키보드: Arrow = 선택 점 미세이동 (기본 5px, Shift=20px)</div>
+      <button id="btnAddSlider" class="primary" onclick="addSlider()">Add Slider</button>
+    </div>
+
+    <!-- Bullet -->
+    <div id="bulletInputs" style="display:none">
+      <div class="row"><label>Spawn (x,y)</label><input id="bulletSpawn" type="text" value="192,540"></div>
+      <div class="row"><label>Dock (x,y)</label><input id="bulletDock" type="text" value="960,540"></div>
+      <div class="row"><label>Despawn (x,y)</label><input id="bulletDespawn" type="text" value="1728,540"></div>
+      <div class="row"><label>Start (sec)</label><input id="bulletStartSec" type="number" step="0.001" value="3.000"></div>
+      <div class="row"><label>Start (beats)</label><input id="bulletStartBeat" type="number" step="0.001" value="3.000"></div>
+      <div class="row"><label>ToDock (sec)</label><input id="bulletToDockSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>ToDock (beats)</label><input id="bulletToDockBeats" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>DockToDespawn (sec)</label><input id="bulletDockToDespawnSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>DockToDespawn (beats)</label><input id="bulletDockToDespawnBeats" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>Canvas click target</label>
+        <select id="bulletClickTarget">
+          <option value="spawn">Spawn</option>
+          <option value="dock">Dock</option>
+          <option value="despawn">Despawn</option>
+        </select>
+      </div>
+      <div class="row">
+        <label class="mini">
+    <input id="bulletCurved" type="checkbox">
+    Curve (Bezier)
+  </label>
+        <label class="mini">
+          <input id="bullet3Click" type="checkbox" checked>
+          3-Click 배치 (Spawn→Dock→Despawn)
+        </label>
+        <label class="mini" style="margin-left:12px">
+          <input id="bulletAutoAdd" type="checkbox">
+          3점 완료 시 자동 Add
+        </label>
+      </div>
+      <div class="hint">
+        <span id="bulletStageLabel">Stage: Spawn을 클릭하세요</span>
+      </div>
+      <button id="btnAddBullet" class="primary" onclick="addBullet()">Add Bullet</button>
+      <div class="hint">Absolute 캔버스 클릭으로 선택된 target 좌표를 세팅할 수 있습니다.</div>
+    </div>
+
+    <!-- [CAMERA] -->
+<div id="cameraInputs" style="display:none">
+  <div class="hint">카메라 트윈: 절대 높이(px) / 각도(도) / 센터(px). 비트/초 중 원하는 축만 체크.</div>
+
+  <div class="row two">
+    <div><label>Start (sec)</label><input id="camStartSec" type="number" step="0.001" value="5.000"></div>
+    <div><label>Duration (sec)</label><input id="camDurSec" type="number" step="0.001" value="0.500"></div>
+  </div>
+  <div class="row two">
+    <div><label>Start (beats)</label><input id="camStartBeat" type="number" step="0.001" value="0.000"></div>
+    <div><label>Duration (beats)</label><input id="camDurBeats" type="number" step="0.001" value="0.000"></div>
+  </div>
+
+  <div class="row"><label class="mini"><input id="camAffectHeight" type="checkbox" checked> Height(px)</label>
+    <input id="camHeightPx" type="number" step="1" value="720">
+  </div>
+  <div class="row"><label class="mini"><input id="camAffectAngle" type="checkbox"> AngleZ(deg)</label>
+    <input id="camAngleDegZ" type="number" step="0.1" value="0">
+  </div>
+  <div class="row"><label class="mini"><input id="camAffectCenter" type="checkbox"> Center (x,y)</label>
+    <input id="camCenterPx" type="text" value="960,540">
+  </div>
+
+  <div class="row two">
+    <div><label>Ease</label>
+      <select id="camEase">
+        <option value="">(default)</option>
+        <option>linear</option>
+        <option>easeInOut</option>
+        <option>quadInOut</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <label class="mini"><input id="camUseBeats" type="checkbox"> Use Beats</label>
+      <label class="mini"><input id="camUseUIScaling" type="checkbox"> UI Scaling</label>
+    </div>
+  </div>
+
+  <button id="btnAddCamera" class="primary" onclick="addCamera()">Add Camera</button>
+</div>
+
+<div id="voiceInputs" style="display:none">
+  <div class="hint">FMOD 이벤트 경로를 그대로 씁니다. 예) <code>event:/ui/voice/line_01</code></div>
+
+  <div class="row"><label>FMOD Event</label>
+    <input id="voiceEventPath" type="text" placeholder="event:/...">
+  </div>
+
+  <div class="row"><label>Start (sec)</label>
+    <input id="voiceStartSec" type="number" step="0.001" value="0.000">
+  </div>
+  <div class="row"><label>Start (beats)</label>
+    <input id="voiceStartBeat" type="number" step="0.001" value="0.000">
+  </div>
+
+  <div class="row two">
+    <div><label>Fade In (sec)</label><input id="voiceFadeInSec" type="number" step="0.01" value="0.00"></div>
+    <div><label>Fade Out (sec)</label><input id="voiceFadeOutSec" type="number" step="0.01" value="0.00"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Volume (0~1)</label><input id="voiceVolume" type="number" step="0.01" min="0" max="1" value="1.00"></div>
+    <div><label>Pitch</label><input id="voicePitch" type="number" step="0.01" value="1.00"></div>
+  </div>
+
+  <button class="primary" onclick="addVoice()">Add Voice</button>
+</div>
+
+<!-- Image (overlay sprite) -->
+<div id="imageInputs" style="display:none">
+  <div class="hint">이미지 에셋 키(또는 리소스 경로)를 지정해서 화면에 띄웁니다.</div>
+
+  <div class="row"><label>Asset Key</label>
+    <input id="imgKey" type="text" placeholder="ui/portrait_01">
+  </div>
+
+  <div class="row two">
+    <div><label>Start (sec)</label><input id="imgStartSec" type="number" step="0.001" value="0.000"></div>
+    <div><label>Start (beats)</label><input id="imgStartBeat" type="number" step="0.001" value="0.000"></div>
+  </div>
+  <div class="row two">
+    <div><label>Duration (sec)</label><input id="imgDurSec" type="number" step="0.001" value="2.000"></div>
+    <div><label>Duration (beats)</label><input id="imgDurBeats" type="number" step="0.001" value="0.000"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Pos (x,y)</label><input id="imgPos" type="text" value="960,540"></div>
+    <div><label>Size (w,h px)</label><input id="imgSize" type="text" value="512,512"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Alpha (0~1)</label><input id="imgAlpha" type="number" step="0.01" min="0" max="1" value="1.00"></div>
+    <div><label>Rotation (deg)</label><input id="imgRotDeg" type="number" step="0.1" value="0.0"></div>
+  </div>
+
+  <div class="row two">
+    <div><label>Fade In (sec)</label><input id="imgFadeInSec" type="number" step="0.01" value="0.00"></div>
+    <div><label>Fade Out (sec)</label><input id="imgFadeOutSec" type="number" step="0.01" value="0.00"></div>
+  </div>
+
+  <button class="primary" onclick="addImage()">Add Image</button>
+</div>
+
+<div id="styleInputs" style="display:none">
+  <div class="hint">Grid 색상 이벤트. Beat/Seconds 중 사용 중인 모드로 채우세요.</div>
+
+  <div class="row">
+    <label>Target</label>
+    <select id="stTarget">
+      <option value="grid-all">grid-all</option>
+      <option value="grid-line">grid-line</option>
+    </select>
+
+    <label>Index</label>
+    <input id="stIndex" type="number" min="0" step="1" value="0" style="width:80px">
+  </div>
+
+  <div class="row">
+    <label>Time (sec)</label>
+    <input id="stTimeSec" type="number" step="0.001" value="0.000" style="width:120px">
+
+    <label>Time (beats)</label>
+    <input id="stTimeBeat" type="number" step="0.001" value="0.000" style="width:120px">
+  </div>
+
+<div class="row">
+  <label>Fade (beats)</label>
+  <input id="stFadeBeats" type="number" min="0" step="0.01" value="0.000" style="width:100px">
+
+  <label>Fade (sec)</label>
+  <input id="stFadeSec" type="number" min="0" step="0.05" value="0.25" style="width:100px">
+</div>
+
+
+  <div class="row">
+
+    <label>Color</label>
+    <input id="stColorText" type="text" value="#ff4444ff" style="width:140px" spellcheck="false">
+    <input id="stColorPick" type="color" value="#ff4444" title="RGB picker">
+    <label class="mini" style="width:auto">Alpha</label>
+    <input id="stAlpha" type="range" min="0" max="255" step="1" value="255" style="width:120px">
+    <span id="stAlphaVal" class="muted" style="width:auto">255</span>
+  </div>
+
+  <button id="stAddBtn" class="primary">Add Style</button>
+</div>
+
+
+    <div id="editBar" class="editbar">
+      <span class="pill">Editing <span id="editLabel" style="font-weight:700"></span></span>
+      <button class="primary" onclick="saveEdit()">Save</button>
+      <button class="bad" onclick="deleteEdit()">Delete</button>
+      <button class="warn" onclick="cancelEdit()">Cancel</button>
+    </div>
+
+        <h3 style="margin:4px 0 8px">Chart <button id="chartToggle" class="mini" style="margin-left:8px;padding:2px 6px">▾</button></h3>
+    <div id="chartSettings">
+    <div class="row"><label>FMOD Event</label>
+  <input id="fmodEvent" type="text" placeholder="event:/your/path/here">
+</div>
+    <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"></div>
+    <div class="row"><label>Fixed BPM (Game)</label><input id="bpm" type="number" value="120" step="0.01"></div>
+    <div class="row">
+      <label>Tempo Map</label>
+      <label class="mini"><input id="tempoMapEnabled" type="checkbox"> Enable</label>
+      <button id="tempoAddBtn" type="button">Add</button>
+    </div>
+    <div id="tempoMapList"></div>
+    <div class="row">
+      <label>Time Signature</label>
+      <label class="mini"><input id="timeSigMapEnabled" type="checkbox"> Enable</label>
+      <button id="timeSigAddBtn" type="button">Add</button>
+    </div>
+    <div id="timeSigMapList"></div>
+    <div class="hint">Editor preview/beat grid uses this map. Export keeps fixed BPM and also saves map in song.json.</div>
+    <div class="row"><label>Time Mode</label>
+      <select id="timeMode"><option value="Seconds">Seconds</option><option value="Beats">Beats</option></select>
+    </div>
+<div class="row"><label>Song Duration (sec)</label>
+  <input id="durationSec" type="number" value="0" step="0.001">
+</div>
+
+    <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"></div>
+    <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"></div>
+    <div class="row"><label>Artist</label><input id="artist" type="text" value="Unknown"></div>
+  <div class="row"><label>Preview Start</label><input id="previewStart" type="number" value="5.0" step="0.01"></div>
+  <div class="row"><label>Preview Duration</label><input id="previewDuration" type="number" value="10.0" step="0.01"></div>
+  <div class="row"><label>Tags (comma)</label><input id="tags" type="text" value="demo"></div>
+  <div class="row"><label>Cover</label><input id="coverFile" type="file" accept="image/*"></div>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    </div><!-- /chartSettings -->
+    <h3 style="margin:4px 0 8px">Spawn Calc Settings <button id="spawnToggle" class="mini" style="margin-left:8px;padding:2px 6px">▾</button></h3>
+    <div id="spawnSettings">
+    <div class="row"><label>Circle Lead (s)</label><input id="circleLead" type="number" step="0.001" value="1.2"></div>
+    <div class="row"><label>Slider Lead (s)</label><input id="sliderLead" type="number" step="0.001" value="1.0"></div>
+    <div class="row"><label>Grid Target Size</label><input id="gridTarget" type="number" step="0.001" value="216"></div>
+    <div class="row"><label>Grid Grow Speed</label><input id="gridGrow" type="number" step="0.001" value="324"></div>
+    <div class="hint">Grid spawn = judge - (targetSize / growSpeed), Circle = judge - circleLead, Slider = start - sliderLead</div>
+    <div class="row"><label>Grid Grow Unit</label>
+  <select id="gridGrowUnit">
+    <option value="pxps" selected>px/sec</option>
+    <option value="pxpbeat">px/beat</option>
+  </select>
+</div>
+<div class="row"><label>Circle Lead (beats)</label>
+  <input id="circleLeadBeats" type="number" step="0.001" value="0.0">
+</div>
+<div class="row"><label>Slider Lead (beats)</label>
+  <input id="sliderLeadBeats" type="number" step="0.001" value="0.0">
+</div>
+
+<!-- Grid 타깃을 픽셀/간격 모드로 선택 -->
+<div class="row"><label>Grid Target Mode</label>
+  <select id="gridTargetMode">
+    <option value="px" selected>Absolute px</option>
+    <option value="spacingX">Touch centers (Horizontal)</option>
+    <option value="spacingY">Touch centers (Vertical)</option>
+  </select>
+</div>
+
+<!-- Bullet 크기 설정 (지름 px) -->
+<div class="row"><label>Bullet Size (px, diameter)</label>
+  <input id="bulletSize" type="number" step="1" value="64">
+</div>
+
+
+
+    <!-- [ADD] Circle/Slider/Bullet 시뮬 크기 설정 -->
+    <div class="row"><label>Circle Target (radius px)</label><input id="circleTargetRadius" type="number" step="1" value="100"></div> <!-- [ADD] -->
+
+    </div><!-- /spawnSettings -->
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <div class="row" style="gap:6px">
+      <button onclick="downloadJSON()" class="primary">Download JSON</button>
+      <button onclick="exportSongZip()" class="primary">Export Song Folder (.zip)</button>
+      <label class="pill">LevelChart (schemaVersion=2)</label>
+    </div>
+    <div class="row" style="gap:6px">
+      <input id="importFile" type="file" accept=".json">
+      <button class="bad" onclick="clearAll()">Clear All</button>
+    </div>
+  </section>
+
+  <!-- 오른쪽 작업영역 -->
+<section class="card">
+  <div class="canvasWrap">
+
+    <!-- 왼쪽: 그리드 -->
+    <div>
+      <div class="row" style="margin-top:0">
+        <span class="pill">3x3 Grid</span>
+      </div>
+      <div id="grid" class="grid"></div>
+    </div>
+
+    <!-- 오른쪽: 미리보기 + 노트 리스트 -->
+    <div style="min-width:460px">
+
+      <!-- ⭐ 핵심 레이아웃 -->
+      <div style="
+        display:flex;
+        gap:12px;
+        align-items:flex-start;
+      ">
+
+        <!-- 미리보기 -->
+        <canvas
+          id="view"
+          width="440"
+          height="360"
+          style="
+            border:1px solid #26304a;
+            border-radius:8px;
+            background:#0b1020;
+          ">
+        </canvas>
+
+        <div class="mini-side">
+          <!-- mini notes (겹침 없음) -->
+          <div
+            id="miniNotes"
+            style="
+              width:220px;
+              height:360px;
+              max-height:360px;
+              overflow:auto;
+              padding:8px;
+              background:rgba(10,14,22,0.95);
+              border:1px solid #26304a;
+              border-radius:8px;
+              font-size:12px;
+            ">
+
+          <div
+            style="
+              display:flex;
+              justify-content:space-between;
+              align-items:center;
+              margin-bottom:6px;
+            ">
+            <strong style="font-size:12px">Notes</strong>
+
+            <select
+              id="miniSort"
+              style="
+                background:transparent;
+                color:var(--muted);
+                border:none;
+                font-size:12px;
+              ">
+              <option value="time">By Time</option>
+              <option value="spawn">By Spawn</option>
+            </select>
+          </div>
+
+            <div id="miniList"></div>
+          </div>
+
+          <div class="mini-wave-panel">
+            <div class="mini-wave-toolbar">
+              <strong style="font-size:12px">Wave Preview</strong>
+              <div class="controls">
+                <button id="miniPlayBtn" class="mini-wave-btn" disabled>Play</button>
+                <button id="miniPauseBtn" class="mini-wave-btn" disabled>Pause</button>
+              </div>
+            </div>
+            <canvas id="waveMini" class="mini-wave-canvas" width="600" height="220"></canvas>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+      <section class="card fullrow">
+    <h3 style="margin:4px 0 12px">Audio Reference (Waveform & Beat Grid)</h3>
+    <div class="wave-toolbar">
+      <input id="audioFile" type="file" accept="audio/*">
+      <button id="playBtn" disabled>Play</button>
+      <button id="pauseBtn" disabled>Pause</button>
+      <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
+      <button id="redoBtn" title="Redo (Ctrl+Y)" disabled>Redo</button>
+      <span class="pill timebadge">Time: <span id="curTime">0.000</span> / <span id="durTime">0.000</span> s</span>
+      <span class="pill timebadge">Beat: <span id="curBeat">-</span></span>
+      <span class="sep"></span>
+      <label class="mini">Subdivision
+        <select id="subdiv">
+          <option value="4">1/4</option>
+          <option value="8" selected>1/8</option>
+          <option value="16">1/16</option>
+          <option value="24">1/24</option>
+          <option value="32">1/32</option>
+          <option value="64">1/64</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label class="mini" id="subdivCustomWrap" style="display:none">N
+        <input id="subdivCustom" type="number" min="1" step="1" value="12" style="width:70px">
+      </label>
+      <label class="mini">Wave Note
+        <select id="waveNoteType">
+          <option value="Grid">Grid</option>
+          <option value="Trail">Trail</option>
+          <option value="Long">Long</option>
+          <option value="CircleTap">CircleTap</option>
+          <option value="Slider">Slider</option>
+          <option value="Bullet">Bullet</option>
+          <option value="Camera">Camera</option>
+          <option value="Line">Line</option>
+          <option value="Voice">Voice</option>
+          <option value="Image">Image</option>
+        </select>
+      </label>
+      <label class="mini">Speed
+  <select id="playbackRate">
+    <option value="0.25">0.25×</option>
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1.0×</option>
+    <option value="1.5">1.5×</option>
+    <option value="2">2.0×</option>
+  </select>
+</label>
+
+      <label class="mini"><input id="snap" type="checkbox" checked> Snap</label>
+      <label class="mini"><input id="syncBeatSeek" type="checkbox"> Seek on Beat Edit</label>
+      <span class="sep"></span>
+      <button id="zoomInBtn" disabled>Zoom+</button>
+      <button id="zoomOutBtn" disabled>Zoom-</button>
+      <button id="fitBtn" disabled>Fit</button>
+      <span class="sep"></span>
+      <label class="mini">Amp <input id="ampScale" type="range" min="0.2" max="1.0" value="0.6" step="0.05"></label>
+      <span class="muted">Click: seek/set time / Drag: pan / Shift+Drag: select / Ctrl+Wheel: zoom</span>
+    </div>
+    <div style="margin-top:8px">
+      <input id="waveScroll" class="wave-scroll" type="range" min="0" max="0" value="0" step="0.001" disabled>
+      <canvas id="wave" height="46" style="width:98%;margin-top:6px"></canvas>
+      <audio id="audio" style="display:none" preload="metadata" crossorigin="anonymous"></audio>
+    </div>
+  </section>
+</div>
+
+    <div class="row" id="orderToolbar">
+      <span class="pill">Order</span>
+      <button onclick="sortByCreation()">By Creation</button>
+      <button onclick="sortByTimeSec()">By Time (sec)</button>
+      <button onclick="sortByTimeBeats()">By Time (beats)</button>
+      <button onclick="sortBySpawn()">By Spawn</button>
+      <button class="primary" onclick="reindexNotes()">Reindex</button>
+      <span class="muted">Tip: drag table rows to reorder</span>
+    </div>
+
+    <div class="row" style="gap:8px;align-items:center">
+      <span class="pill">Filter</span>
+      <input id="noteFilterText" type="text" placeholder="Search notes..." style="max-width:240px">
+      <select id="noteFilterType">
+        <option value="all">All Types</option>
+        <option value="Grid">Grid</option>
+        <option value="Trail">Trail</option>
+        <option value="Long">Long</option>
+        <option value="CircleTap">CircleTap</option>
+        <option value="Slider">Slider</option>
+        <option value="Bullet">Bullet</option>
+        <option value="Camera">Camera</option>
+        <option value="Line">Line</option>
+        <option value="Voice">Voice</option>
+        <option value="Image">Image</option>
+      </select>
+    </div>
+
+    <h4 style="margin:8px 0 6px">Notes</h4>
+    <table id="notesTable">
+      <thead>
+        <tr>
+          <th>#</th><th>Type</th><th>Data</th><th>Time</th><th>Spawn(s)</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- 파형/재생/박자 -->
