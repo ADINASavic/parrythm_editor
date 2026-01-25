@@ -360,7 +360,7 @@
     <div class="row"><label>Fixed BPM (Game)</label><input id="bpm" type="number" value="120" step="0.01"></div>
     <div class="row">
       <label>Tempo Map</label>
-      <label class="mini"><input id="tempoMapEnabled" type="checkbox" checked> Enable</label>
+      <label class="mini"><input id="tempoMapEnabled" type="checkbox"> Enable</label>
       <button id="tempoAddBtn" type="button">Add</button>
     </div>
     <div id="tempoMapList"></div>
@@ -1039,7 +1039,7 @@ let chart = {
   schemaVersion: 2,
   title:"New Chart", bpm:120, timeMode:"Seconds",
   startOffset:0, startOffsetBeats:0,
-  tempoMapEnabled: true,
+  tempoMapEnabled: false,
   tempoMap: [{ beat: 0, bpm: 120 }],
   timeSigMapEnabled: true,
   timeSigMap: [{ beat: 0, numerator: 4, denominator: 4 }],
@@ -1948,7 +1948,7 @@ function addImage(){
     durationBeats:num($("#imgDurBeats").value),
 
     absPos: { x: clamp(pos.x,0,REF_W), y: clamp(pos.y,0,REF_H) },
-    sizePx: { w: size.w, h: size.h },
+    sizePx: { x: size.w, y: size.h },
 
     alpha:  Math.max(0, Math.min(1, num($("#imgAlpha").value))),
     rotDeg: num($("#imgRotDeg").value) || 0,
@@ -3507,99 +3507,6 @@ function sortBySpawn(){ chart.notes.sort((a,b)=> spawnSecOf(a)-spawnSecOf(b)); r
 function reindexNotes(){ for(let i=0;i<chart.notes.length;i++){ chart.notes[i]._order=i; } renderNotes(); }
 
 /* ---------- Export/Import ---------- */
-function chartBeatFromTime(sec, beat){
-  if (isFinite(beat)) return beat;
-  if (isFinite(sec)) return tempoSecToBeat(sec);
-  return 0;
-}
-function chartDurationBeatsFromSec(startBeat, startSec, durationSec){
-  if (!isFinite(durationSec) || durationSec <= 0) return 0;
-  const baseBeat = isFinite(startBeat) ? startBeat : (isFinite(startSec) ? tempoSecToBeat(startSec) : 0);
-  const endBeat = tempoSecToBeat((startSec || 0) + durationSec);
-  return Math.max(0, endBeat - baseBeat);
-}
-function fixedTimeSecFromChart(sec, beat){
-  return fixedBeatToSec(chartBeatFromTime(sec, beat));
-}
-function fixedDurationSecFromChart(startBeat, startSec, durationBeats, durationSec){
-  const beats = (isFinite(durationBeats) && durationBeats > 0)
-    ? durationBeats
-    : chartDurationBeatsFromSec(startBeat, startSec, durationSec);
-  return Math.max(0, beats * fixedSpb());
-}
-function appendFixedTimes(n){
-  const out = { ...n };
-  if (!(fixedSpb() > 0)) return out;
-
-  if (n.type === "Line"){
-    out.fixedTimeSec = fixedTimeSecFromChart(n.timeSec, n.timeBeat);
-    const fadeBeats = (isFinite(n.fadeBeat) ? n.fadeBeat : (isFinite(n.fadebeat) ? n.fadebeat : undefined));
-    out.fixedFadeSec = fixedDurationSecFromChart(n.timeBeat, n.timeSec, fadeBeats, n.fadeSec);
-    return out;
-  }
-
-  if (n.type === "Bullet"){
-    const spawnBeat = chartBeatFromTime(n.bulletSpawnTime, n.bulletSpawnBeat);
-    out.fixedBulletSpawnTime = fixedBeatToSec(spawnBeat);
-    const toDockBeats = (isFinite(n.bulletToDockBeats) && n.bulletToDockBeats > 0)
-      ? n.bulletToDockBeats
-      : chartDurationBeatsFromSec(spawnBeat, n.bulletSpawnTime, n.bulletToDockDuration);
-    out.fixedBulletToDockDuration = Math.max(0, toDockBeats * fixedSpb());
-    const dockBeat = spawnBeat + toDockBeats;
-    const dockToDespawnBeats = (isFinite(n.bulletDockToDespawnBeats) && n.bulletDockToDespawnBeats > 0)
-      ? n.bulletDockToDespawnBeats
-      : chartDurationBeatsFromSec(dockBeat, n.bulletSpawnTime + (n.bulletToDockDuration || 0), n.bulletDockToDespawnDuration);
-    out.fixedBulletDockToDespawnDuration = Math.max(0, dockToDespawnBeats * fixedSpb());
-    return out;
-  }
-
-  if (n.type === "Slider"){
-    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
-    out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
-    return out;
-  }
-
-  if (n.type === "Camera"){
-    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
-    out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
-    return out;
-  }
-
-  if (n.type === "Voice"){
-    out.fixedStartTime = fixedTimeSecFromChart(n.startTime, n.startBeat);
-    return out;
-  }
-
-  if (n.type === "Image"){
-    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
-    out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
-    return out;
-  }
-
-  if ((n.type === "Long") || (n.type === "Grid" && n.isLong)){
-    const startBeat = chartBeatFromTime(n.startTime, n.startBeat);
-    out.fixedStartTime = fixedBeatToSec(startBeat);
-    out.fixedJudgeTime = fixedTimeSecFromChart(n.judgeTime, n.judgeBeat);
-    out.fixedDuration = fixedDurationSecFromChart(startBeat, n.startTime, n.durationBeats, n.duration);
-    return out;
-  }
-
-  if (n.type === "Grid" || n.type === "CircleTap"){
-    out.fixedJudgeTime = fixedTimeSecFromChart(n.judgeTime, n.judgeBeat);
-    return out;
-  }
-
-  if (isFinite(n.startTime) || isFinite(n.startBeat)){
-    out.fixedStartTime = fixedTimeSecFromChart(n.startTime, n.startBeat);
-  }
-  if (isFinite(n.timeSec) || isFinite(n.timeBeat)){
-    out.fixedTimeSec = fixedTimeSecFromChart(n.timeSec, n.timeBeat);
-  }
-  return out;
-}
 function levelChartJSON(){
   const fixedNotes = (chart.notes || []).map(n=>{
     let out = n;
@@ -3609,7 +3516,7 @@ function levelChartJSON(){
                : (Number.isFinite(n.fadebeat) ? n.fadebeat : undefined);
       out = { ...n, ...(fb !== undefined ? { fadeBeat: fb } : {}) };
     }
-    return appendFixedTimes(out);
+    return out;
   });
   const payload = {
     schemaVersion: 2,
@@ -3725,7 +3632,7 @@ $("#importFile").addEventListener("change",(e)=>{
       chart.title=obj.title||"Imported"; chart.bpm=obj.bpm||120;
       chart.timeMode=obj.timeMode||"Seconds";
       chart.startOffset=obj.startOffset||0; chart.startOffsetBeats=obj.startOffsetBeats||0;
-      chart.tempoMapEnabled = (obj.tempoMapEnabled !== undefined) ? !!obj.tempoMapEnabled : true;
+      chart.tempoMapEnabled = (obj.tempoMapEnabled !== undefined) ? !!obj.tempoMapEnabled : false;
       chart.tempoMap = Array.isArray(obj.tempoMap) ? obj.tempoMap : [{ beat: 0, bpm: chart.bpm }];
       chart.timeSigMapEnabled = (obj.timeSigMapEnabled !== undefined) ? !!obj.timeSigMapEnabled : true;
       chart.timeSigMap = Array.isArray(obj.timeSigMap) ? obj.timeSigMap : [{ beat: 0, numerator: 4, denominator: 4 }];
