@@ -12,13 +12,21 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
   header{padding:12px 16px;border-bottom:1px solid var(--line);background:#0b0d12;position:sticky;top:0;z-index:5}
-  header h1{margin:0;font-size:16px}
+  header h1{margin:0;font-size:16px;display:flex;gap:8px;align-items:center}
+  .status-badge{margin-left:auto;font-size:12px;color:var(--muted);border:1px solid #2d3653;border-radius:999px;padding:2px 8px}
+  .status-badge.active{color:#dff6ff;border-color:#265a6d;background:#163a4a}
+  .field-touched{border-color:#3a5a7a}
+  .field-ok{border-color:var(--ok);box-shadow:0 0 0 2px rgba(110,231,183,0.15)}
+  .field-warn{border-color:var(--warn);box-shadow:0 0 0 2px rgba(251,191,36,0.12)}
   .wrap{display:grid;grid-template-columns:340px 1fr;gap:12px;padding:12px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
   .row{display:flex;gap:8px;align-items:center;margin:6px 0}
   .row label{width:130px;color:var(--muted)}
   input[type="number"],input[type="text"],select{width:100%;background:#0e1220;color:var(--text);border:1px solid #273047;border-radius:8px;padding:8px}
   button{background:#1b2235;color:#e9ecf5;border:1px solid #2d3653;border-radius:8px;padding:8px 10px;cursor:pointer}
+  button:focus{outline:none;box-shadow:none}
+  button:focus-visible{outline:none;box-shadow:none}
+  select:focus{outline:none;box-shadow:none}
   button.primary{background:#163a4a;border-color:#265a6d;color:#dff6ff}
   button.warn{background:#3a2a13;border-color:#6e4f1a;color:#ffd48a}
   button.bad{background:#3a1616;border-color:#6e1c1c;color:#ffd2d2}
@@ -71,7 +79,7 @@
 </style>
 </head>
 <body>
-<header><h1>Rhythm Chart Editor (Absolute 1920×1080)</h1></header>
+<header><h1>Rhythm Chart Editor (Absolute 1920×1080)<span id="statusBadge" class="status-badge">Idle</span></h1></header>
 
 <div class="wrap">
   <!-- 왼쪽 패널 -->
@@ -877,6 +885,50 @@ function setDbg(text){
     const cb = document.getElementById('chartToggle'); if(cb) cb.addEventListener('click', ()=> toggleSection('chartSettings','chartToggle'));
     const sb = document.getElementById('spawnToggle'); if(sb) sb.addEventListener('click', ()=> toggleSection('spawnSettings','spawnToggle'));
   });
+
+  const statusBadge = document.getElementById("statusBadge");
+  let statusTimer = null;
+  function setStatus(text, active=false){
+    if (!statusBadge) return;
+    statusBadge.textContent = text;
+    statusBadge.classList.toggle("active", !!active);
+    if (statusTimer) clearTimeout(statusTimer);
+    if (active){
+      statusTimer = setTimeout(()=>{ if (statusBadge) statusBadge.classList.remove("active"); }, 1200);
+    }
+  }
+  function markField(el){
+    if (!el || el.type === "file") return;
+    el.classList.add("field-touched");
+    const val = (el.value || "").trim();
+    if (val.length){
+      el.classList.remove("field-warn");
+      el.classList.add("field-ok");
+    }else{
+      el.classList.remove("field-ok");
+      el.classList.add("field-warn");
+    }
+    setStatus("Updated", true);
+  }
+  document.addEventListener("input", (e)=>{
+    const el = e.target;
+    if (!el || !(el.matches && el.matches("input,select,textarea"))) return;
+    if (el.type === "file") return;
+    markField(el);
+  });
+document.addEventListener("change", (e)=>{
+  const el = e.target;
+  if (!el || !(el.matches && el.matches("input,select,textarea"))) return;
+  if (el.type === "file"){
+    el.blur();
+    setStatus("File selected", true);
+    return;
+  }
+  if (el.tagName === "SELECT"){
+    el.blur();
+  }
+  markField(el);
+});
 
   // Prevent numpad from causing window scroll: intercept numpad-originated arrow/page keys
   window.addEventListener('keydown', (e)=>{
@@ -3953,7 +4005,8 @@ function resizeWaveCanvas(){
 function resizeWaveMiniCanvas(){
   if (!waveMiniCanvas || !wctxMini) return;
   const dpr=window.devicePixelRatio||1, cssW=waveMiniCanvas.clientWidth, cssH=waveMiniCanvas.clientHeight;
-  waveMiniCanvas.width=Math.max(600,Math.floor(cssW*dpr)); waveMiniCanvas.height=Math.max(220,Math.floor(cssH*dpr));
+  waveMiniCanvas.width=Math.max(1,Math.floor(cssW*dpr));
+  waveMiniCanvas.height=Math.max(1,Math.floor(cssH*dpr));
   wctxMini.setTransform(dpr,0,0,dpr,0,0);
   drawWaveMini();
 }
@@ -4024,17 +4077,35 @@ function applyStyleEvents(nowSec){
   _styleLastNow = nowSec;
 }
 
-playBtn.onclick  = () => { (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
-pauseBtn.onclick = () => { (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
-if (miniPlayBtn) miniPlayBtn.onclick = () => { (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
-if (miniPauseBtn) miniPauseBtn.onclick = () => { (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
+function blurNonTextFocus(){
+  const ae = document.activeElement;
+  if (!ae || !ae.tagName) return;
+  const tag = ae.tagName.toUpperCase();
+  if (tag === "BUTTON" || tag === "SELECT") { ae.blur(); return; }
+  if (tag === "INPUT") {
+    const type = (ae.type || "").toLowerCase();
+    if (type === "button" || type === "submit" || type === "checkbox" || type === "radio" || type === "file"){
+      ae.blur();
+    }
+  }
+}
+
+playBtn.onclick  = () => { blurNonTextFocus(); (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
+pauseBtn.onclick = () => { blurNonTextFocus(); (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
+if (miniPlayBtn) miniPlayBtn.onclick = () => { blurNonTextFocus(); (AC_enabled && AC_buf) ? playAccurate() : audioEl.play(); };
+if (miniPauseBtn) miniPauseBtn.onclick = () => { blurNonTextFocus(); (AC_enabled && AC_buf) ? pauseAccurate() : audioEl.pause(); };
 
 // Spacebar toggles play/pause when not typing in an input field
 window.addEventListener("keydown", (e) => {
   if (e.code === 'Space' || e.keyCode === 32) {
     const ae = document.activeElement;
     const tag = ae && ae.tagName ? ae.tagName.toUpperCase() : "";
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable)) return;
+    if (tag === 'INPUT'){
+      const type = (ae.type || "").toLowerCase();
+      if (type === "file") { ae.blur(); }
+      else { return; }
+    }
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable)) return;
     e.preventDefault();
     if (isPlaying()) {
       if (AC_enabled && AC_buf) pauseAccurate(); else audioEl.pause();
@@ -4214,23 +4285,40 @@ if (waveScroll){
 let waveHover = false;
 waveCanvas.addEventListener("mouseenter", ()=> waveHover = true);
 waveCanvas.addEventListener("mouseleave", ()=> waveHover = false);
+waveCanvas.addEventListener("mousedown", ()=> blurNonTextFocus());
+if (waveMiniCanvas){
+  waveMiniCanvas.addEventListener("mousedown", ()=> blurNonTextFocus());
+}
 
 window.addEventListener("keydown", (e)=>{
   // 텍스트 입력 중엔 무시
   const active = document.activeElement;
   const tag = (active && active.tagName) || "";
+  const isArrow = (e.key === "ArrowLeft" || e.key === "ArrowRight");
   if (tag === "INPUT"){
     const type = (active.type || "").toLowerCase();
-    if (type === "file" || type === "button" || type === "submit" || type === "checkbox" || type === "radio"){
-      e.preventDefault();
+    if (type === "file"){
+      if (waveHover) { active.blur(); }
+      else { e.preventDefault(); return; }
+    }else if (type === "button" || type === "submit" || type === "checkbox" || type === "radio"){
+      if (waveHover) { active.blur(); }
+      else { e.preventDefault(); return; }
+    }else{
       return;
     }
-    return;
   }
-  if (tag === "TEXTAREA" || tag === "SELECT" || (active && active.isContentEditable)) return;
+  if (tag === "SELECT"){
+    if (isArrow){
+      active.blur();
+      e.preventDefault();
+    }else{
+      if (waveHover) { active.blur(); }
+      else { return; }
+    }
+  }
+  if (tag === "TEXTAREA" || (active && active.isContentEditable)) return;
 
-  if (!waveHover){
-    e.preventDefault();
+  if (!waveHover && !isArrow){
     return;
   }
 
@@ -4293,14 +4381,11 @@ if (e.code && e.code.startsWith('Numpad')){
   // (Numpad0 add shortcut removed — keep only cell selection via Numpad1-9 and NumpadAdd)
 
   // 좌/우 키만 처리
-  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  if (!isArrow) return;
 
   // 슬라이더 편집 충돌 방지: 슬라이더 편집 중이면 Alt 눌렀을 때만 시점이동
   const sliderEditing = ($("#noteType")?.value === "Slider") && (pathPtsAbs?.length > 0);
   if (sliderEditing && !e.altKey) return;
-
-  // 파형 위에서만 동작하도록 제한
-  if (!waveHover) return;
 
   const D = getDuration(); if (D <= 0) return;
 
@@ -4329,6 +4414,18 @@ if (e.code && e.code.startsWith('Numpad')){
   }
   e.preventDefault();
 });
+
+// Prevent mouse focus from sticking on buttons/selects (keep shortcuts active)
+document.addEventListener("mousedown", (e)=>{
+  const el = e.target;
+  if (!el || !el.closest) return;
+  const btn = el.closest("button");
+  const sel = el.closest("select");
+  if (btn || sel){
+    e.preventDefault();
+    try { (btn || sel).blur(); } catch {}
+  }
+}, {capture:true});
 
 
 
@@ -5308,7 +5405,13 @@ function getSubdiv(){
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function r3(v){ return Math.round(v*1000)/1000; }
 function fmt(v){ return (v==null)?"-":r3(v); }
-function parseAbsXY(s,def){ const [xs,ys]=(s||def).split(","); return {x:clamp(parseFloat(xs||"960"),0,REF_W), y:clamp(parseFloat(ys||"540"),0,REF_H)}; }
+function parseAbsXY(s,def){
+  const [xs,ys]=(s||def).split(",");
+  let x = clamp(parseFloat(xs||"960"),0,REF_W);
+  let y = clamp(parseFloat(ys||"540"),0,REF_H);
+  if (x === 0 && y === 0){ x = 1; y = 1; } // avoid Unity error at (0,0)
+  return {x,y};
+}
 
 /* ---------- Slider 포인트 리스트 UI ---------- */
 (function(){
