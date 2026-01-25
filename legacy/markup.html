@@ -1,5 +1,3 @@
-<header><h1>Rhythm Chart Editor (Absolute 1920×1080)<span id="statusBadge" class="status-badge">Idle</span></h1></header>
-
 <div class="wrap">
   <!-- 왼쪽 패널 -->
   <section class="card">
@@ -473,6 +471,8 @@
       <span class="sep"></span>
       <label class="mini">Subdivision
         <select id="subdiv">
+          <option value="1">1/1</option>
+          <option value="2">1/2</option>
           <option value="4">1/4</option>
           <option value="8" selected>1/8</option>
           <option value="16">1/16</option>
@@ -556,6 +556,15 @@
     </div>
 
     <h4 style="margin:8px 0 6px">Notes</h4>
+    <div id="multiEditBar" class="multi-edit-bar">
+      <span id="multiSelCount" class="muted">Selected: 0</span>
+      <label class="mini">Δsec <input id="multiDeltaSec" type="number" step="0.001" value="0.000"></label>
+      <label class="mini">Δbeat <input id="multiDeltaBeat" type="number" step="0.001" value="0.000"></label>
+      <button id="multiApply" class="mini">Apply</button>
+      <button id="multiDelete" class="mini">Delete</button>
+      <button id="multiSelectAll" class="mini">All</button>
+      <button id="multiClear" class="mini">Clear</button>
+    </div>
     <table id="notesTable">
       <thead>
         <tr>
