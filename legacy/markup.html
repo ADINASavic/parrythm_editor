@@ -12,6 +12,7 @@
         <option value="CircleTap">CircleTap</option>
         <option value="Slider">Slider</option>
         <option value="Bullet">Bullet</option>
+        <option value="SpecialBullet">Special Bullet</option>
         <option value="Camera">Camera</option>
         <option value="Line">Line</option>
         <option value="Voice">Voice</option>
@@ -119,6 +120,121 @@
       </div>
       <button id="btnAddBullet" class="primary" onclick="addBullet()">Add Bullet</button>
       <div class="hint">Absolute 캔버스 클릭으로 선택된 target 좌표를 세팅할 수 있습니다.</div>
+          </div>
+
+    <!-- Special Bullet -->
+    <div id="specialBulletInputs" style="display:none">
+<hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <div class="row"><label>Special Pattern</label>
+        <select id="spPattern">
+          <option value="ring">Ring</option>
+          <option value="arc">Arc</option>
+          <option value="spiral">Spiral</option>
+          <option value="wave">Wave</option>
+          <option value="cross">Cross</option>
+          <option value="star">Star</option>
+          <option value="line">Line</option>
+          <option value="linefan">Line Fan</option>
+          <option value="burst">Burst</option>
+          <option value="grid">Grid</option>
+          <option value="sweep">Sweep</option>
+        </select>
+      </div>
+      <div class="hint" id="spPatternHelp">Ring: ???? ?? ??. Arc: ???? ?? ??.</div>
+      <div class="row"><label>Count</label><input id="spCount" type="number" value="12" step="1"></div>
+      <div class="row"><label>Center (x,y)</label><input id="spCenter" type="text" value="960,540"></div>
+      <div class="row"><label>Radius</label><input id="spRadius" type="number" value="240" step="1"></div>
+      <div class="row"><label>Radius Step</label><input id="spRadiusStep" type="number" value="12" step="1"></div>
+      <div class="row"><label>Start Angle (deg)</label><input id="spStartAngle" type="number" value="0" step="1"></div>
+      <div class="row"><label>Arc (deg)</label><input id="spArc" type="number" value="360" step="1"></div>
+      <div class="row"><label>Turns (Spiral)</label><input id="spTurns" type="number" value="2" step="0.1"></div>
+      <div class="row"><label>Wave Amp</label><input id="spWaveAmp" type="number" value="60" step="1"></div>
+      <div class="row"><label>Wave Freq</label><input id="spWaveFreq" type="number" value="1" step="0.1"></div>
+      <div class="row"><label>Grid Rows</label><input id="spGridRows" type="number" value="3" step="1"></div>
+      <div class="row"><label>Grid Cols</label><input id="spGridCols" type="number" value="4" step="1"></div>
+      <div class="row"><label>Grid Spacing X</label><input id="spGridSpaceX" type="number" value="120" step="1"></div>
+      <div class="row"><label>Grid Spacing Y</label><input id="spGridSpaceY" type="number" value="120" step="1"></div>
+      <div class="row"><label>Line Length</label><input id="spLineLength" type="number" value="320" step="1"></div>
+      <div class="row"><label>Line Points (x,y;...)</label><input id="spLinePoints" type="text" value=""></div>
+      <div class="row"><label>Burst Radius</label><input id="spBurstRadius" type="number" value="220" step="1"></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <div class="row"><label>Dock Pattern</label>
+        <select id="spDockPattern">
+          <option value="ring">Ring</option>
+          <option value="arc">Arc</option>
+          <option value="spiral">Spiral</option>
+          <option value="wave">Wave</option>
+          <option value="cross">Cross</option>
+          <option value="star">Star</option>
+          <option value="line">Line</option>
+          <option value="linefan">Line Fan</option>
+          <option value="burst">Burst</option>
+          <option value="grid">Grid</option>
+          <option value="sweep">Sweep</option>
+        </select>
+      </div>
+      <div class="hint" id="spDockHelp">Dock pattern uses its own Center/Radius.</div>
+      <div class="row"><label>Dock Center (x,y)</label><input id="spDockCenter" type="text" value="960,540"></div>
+      <div class="row"><label>Dock Radius</label><input id="spDockRadius" type="number" value="0" step="1"></div>
+      <div class="row"><label>Dock Radius Step</label><input id="spDockRadiusStep" type="number" value="0" step="1"></div>
+      <div class="row"><label>Dock Start Angle (deg)</label><input id="spDockStartAngle" type="number" value="0" step="1"></div>
+      <div class="row"><label>Dock Arc (deg)</label><input id="spDockArc" type="number" value="360" step="1"></div>
+      <div class="row"><label>Dock Turns</label><input id="spDockTurns" type="number" value="1" step="0.1"></div>
+      <div class="row"><label>Dock Wave Amp</label><input id="spDockWaveAmp" type="number" value="0" step="1"></div>
+      <div class="row"><label>Dock Wave Freq</label><input id="spDockWaveFreq" type="number" value="1" step="0.1"></div>
+      <div class="row"><label>Dock Grid Rows</label><input id="spDockGridRows" type="number" value="1" step="1"></div>
+      <div class="row"><label>Dock Grid Cols</label><input id="spDockGridCols" type="number" value="1" step="1"></div>
+      <div class="row"><label>Dock Grid Spacing X</label><input id="spDockGridSpaceX" type="number" value="0" step="1"></div>
+      <div class="row"><label>Dock Grid Spacing Y</label><input id="spDockGridSpaceY" type="number" value="0" step="1"></div>
+      <div class="row"><label>Dock Line Length</label><input id="spDockLineLength" type="number" value="0" step="1"></div>
+      <div class="row"><label>Dock Line Points (x,y;...)</label><input id="spDockLinePoints" type="text" value=""></div>
+      <div class="row"><label>Dock Burst Radius</label><input id="spDockBurstRadius" type="number" value="0" step="1"></div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <div class="row"><label>Despawn Pattern</label>
+        <select id="spDespawnPattern">
+          <option value="ring">Ring</option>
+          <option value="arc">Arc</option>
+          <option value="spiral">Spiral</option>
+          <option value="wave">Wave</option>
+          <option value="cross">Cross</option>
+          <option value="star">Star</option>
+          <option value="line">Line</option>
+          <option value="linefan">Line Fan</option>
+          <option value="burst">Burst</option>
+          <option value="grid">Grid</option>
+          <option value="sweep">Sweep</option>
+        </select>
+      </div>
+      <div class="hint" id="spDespawnHelp">Despawn pattern uses its own Center/Radius.</div>
+      <div class="row"><label>Despawn Center (x,y)</label><input id="spDespawnCenter" type="text" value="960,540"></div>
+      <div class="row"><label>Despawn Radius</label><input id="spDespawnRadius" type="number" value="720" step="1"></div>
+      <div class="row"><label>Despawn Radius Step</label><input id="spDespawnRadiusStep" type="number" value="0" step="1"></div>
+      <div class="row"><label>Despawn Start Angle (deg)</label><input id="spDespawnStartAngle" type="number" value="0" step="1"></div>
+      <div class="row"><label>Despawn Arc (deg)</label><input id="spDespawnArc" type="number" value="360" step="1"></div>
+      <div class="row"><label>Despawn Turns</label><input id="spDespawnTurns" type="number" value="1" step="0.1"></div>
+      <div class="row"><label>Despawn Wave Amp</label><input id="spDespawnWaveAmp" type="number" value="0" step="1"></div>
+      <div class="row"><label>Despawn Wave Freq</label><input id="spDespawnWaveFreq" type="number" value="1" step="0.1"></div>
+      <div class="row"><label>Despawn Grid Rows</label><input id="spDespawnGridRows" type="number" value="1" step="1"></div>
+      <div class="row"><label>Despawn Grid Cols</label><input id="spDespawnGridCols" type="number" value="1" step="1"></div>
+      <div class="row"><label>Despawn Grid Spacing X</label><input id="spDespawnGridSpaceX" type="number" value="0" step="1"></div>
+      <div class="row"><label>Despawn Grid Spacing Y</label><input id="spDespawnGridSpaceY" type="number" value="0" step="1"></div>
+      <div class="row"><label>Despawn Line Length</label><input id="spDespawnLineLength" type="number" value="0" step="1"></div>
+      <div class="row"><label>Despawn Line Points (x,y;...)</label><input id="spDespawnLinePoints" type="text" value=""></div>
+      <div class="row"><label>Despawn Burst Radius</label><input id="spDespawnBurstRadius" type="number" value="0" step="1"></div>
+
+      <div class="row"><label>Start (sec)</label><input id="spStartSec" type="number" step="0.001" value="3.000"></div>
+      <div class="row"><label>Start (beats)</label><input id="spStartBeat" type="number" step="0.001" value="3.000"></div>
+      <div class="row"><label>Step (sec)</label><input id="spStepSec" type="number" step="0.001" value="0.100"></div>
+      <div class="row"><label>Step (beats)</label><input id="spStepBeat" type="number" step="0.001" value="0.250"></div>
+      <div class="row"><label>ToDock (sec)</label><input id="spToDockSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>ToDock (beats)</label><input id="spToDockBeats" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>DockToDespawn (sec)</label><input id="spDockToDespawnSec" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>DockToDespawn (beats)</label><input id="spDockToDespawnBeats" type="number" step="0.001" value="1.000"></div>
+      <label class="mini"><input id="spCurved" type="checkbox"> Curve (Bezier)</label>
+      <button id="btnAddSpecialBullets" class="primary" onclick="addSpecialBulletPattern()">Add Pattern Bullets</button>
+      <div class="hint">Dock/Despawn? ???? ?? ?????. Time mode에 따라 sec/beat를 해석합니다. Special Bullet은 Bullet 노트를 일괄 생성합니다.</div>
+
     </div>
 
     <!-- [CAMERA] -->
@@ -548,6 +664,7 @@
         <option value="CircleTap">CircleTap</option>
         <option value="Slider">Slider</option>
         <option value="Bullet">Bullet</option>
+        <option value="SpecialBullet">Special Bullet</option>
         <option value="Camera">Camera</option>
         <option value="Line">Line</option>
         <option value="Voice">Voice</option>
