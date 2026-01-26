@@ -1,5 +1,8 @@
 # Parrythm Editor Guide
 
+##https://www.notion.so/27102ad4e0a1802b90bbfee8ed14f30f 한글에디션
+
+
 This document explains how the web-based editor behaves and how its data maps to the in-game runtime. The UI is driven by `EditorApp/public/legacy/markup.html`, `EditorApp/src/legacy/core.js`, and `EditorApp/src/App.jsx`, while runtime parsing and input are defined in `Assets/Features/Systems/Script/Parsiing/LevelChartData.cs`, `Assets/Features/Systems/Script/Parsiing/Jsonify.cs`, and `Assets/Features/Systems/Script/KeyboardInputManager.cs`. A Unity-side JSON helper exists at `Assets/Features/Editor/Jsonify.cs`.
 
 ## Shortcuts and Input
