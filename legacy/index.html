@@ -8,7 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
 <style>
-  :root{--bg:#0f1115;--panel:#171b27;--muted:#8a94aa;--text:#e6e9f2;--accent:#66d9ef;--ok:#6ee7b7;--warn:#fbbf24;--bad:#f87171;--line:#26304a;--mini-wave-width:600px;--mini-wave-height:220px;}
+  :root{--bg:#0f1115;--panel:#171b27;--muted:#8a94aa;--text:#e6e9f2;--accent:#66d9ef;--ok:#6ee7b7;--warn:#fbbf24;--bad:#f87171;--line:#26304a;--mini-wave-width:clamp(260px,60vw,600px);--mini-wave-height:clamp(140px,30vw,220px);}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
   header{padding:12px 16px;border-bottom:1px solid var(--line);background:#0b0d12;position:sticky;top:0;z-index:5}
@@ -34,13 +34,15 @@
   .grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:80px;gap:6px}
   .cell{border:1px dashed #2a314a;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .cell.active{outline:2px solid var(--accent)}
-  .canvasWrap{display:flex;gap:12px;flex-wrap:wrap}
+  .canvasWrap{display:grid;gap:12px;align-items:flex-start;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) minmax(0,1fr) minmax(0,2fr);width:100%}
+  .canvasWrap > *{min-width:0}
+  .canvasWrap > *{min-width:0}
   /* 캔버스는 반드시 클릭을 받는다 */
   #view { pointer-events: auto; display:block; }
   /* 혹시 뷰 상단에 떠 있는 디버그 배지/오버레이가 있다면 */
   #dbgBadge { pointer-events: none; }
 
-  canvas{background:#0b0f1c;border:1px solid #233;border-radius:8px}
+  canvas{background:#0b0f1c;border:1px solid #233;border-radius:8px;max-width:100%}
   table{width:100%;border-collapse:collapse;margin-top:8px}
   th,td{border-bottom:1px solid var(--line);padding:8px;font-size:13px}
   th{color:#a5b0c6;text-align:left}
@@ -52,12 +54,16 @@
   .editrow{background:rgba(102,217,239,0.08)}
   .fullrow{grid-column:1 / -1}
   .wave-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .mini-side{display:flex;gap:10px;align-items:flex-start}
-  .mini-wave-panel{width:var(--mini-wave-width);min-width:var(--mini-wave-width);flex:0 0 var(--mini-wave-width);padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
+  .mini-side{display:contents}
+  .mini-wave-panel{width:100%;min-width:0;padding:8px;background:rgba(10,14,22,0.95);border:1px solid #26304a;border-radius:8px}
   .mini-wave-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .mini-wave-toolbar .controls{display:flex;gap:6px}
   .mini-wave-btn{padding:4px 6px;border-radius:6px;font-size:12px}
-  .mini-wave-canvas{width:var(--mini-wave-width);height:var(--mini-wave-height)}
+  .mini-wave-canvas{width:100%;height:var(--mini-wave-height)}
+  .preview-col{width:100%;min-width:0;max-width:100%;display:contents}
+  .preview-row{display:contents}
+  #view{width:100%;max-width:none;height:auto;aspect-ratio:16/9;min-width:0}
+  #miniNotes{width:100%;max-width:100%;height:min(360px,60vh);max-height:min(360px,60vh);min-width:0}
   .wave-scroll{width:98%}
   .timebadge{font-variant-numeric:tabular-nums}
   .sep{width:1px;height:22px;background:#2d3653;margin:0 4px}
@@ -462,14 +468,10 @@
     </div>
 
     <!-- 오른쪽: 미리보기 + 노트 리스트 -->
-    <div style="min-width:460px">
+    <div class="preview-col">
 
       <!-- ⭐ 핵심 레이아웃 -->
-      <div style="
-        display:flex;
-        gap:12px;
-        align-items:flex-start;
-      ">
+      <div class="preview-row">
 
         <!-- 미리보기 -->
         <canvas
@@ -488,8 +490,6 @@
           <div
             id="miniNotes"
             style="
-              width:220px;
-              max-height:440px;
               overflow:auto;
               padding:8px;
               background:rgba(10,14,22,0.95);

@@ -495,14 +495,10 @@
     </div>
 
     <!-- 오른쪽: 미리보기 + 노트 리스트 -->
-    <div style="min-width:460px">
+    <div class="preview-col">
 
       <!-- ⭐ 핵심 레이아웃 -->
-      <div style="
-        display:flex;
-        gap:12px;
-        align-items:flex-start;
-      ">
+      <div class="preview-row">
 
         <!-- 미리보기 -->
         <canvas
@@ -521,9 +517,6 @@
           <div
             id="miniNotes"
             style="
-              width:220px;
-              height:360px;
-              max-height:360px;
               overflow:auto;
               padding:8px;
               background:rgba(10,14,22,0.95);
