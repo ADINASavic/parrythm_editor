@@ -326,6 +326,7 @@
     <label>Index</label>
     <input id="stIndex" type="number" min="0" step="1" value="0" style="width:80px">
   </div>
+  <div class="hint">Index map (grid-line): 0-3 vertical L→R, 4-7 horizontal B→T.</div>
 
   <div class="row">
     <label>Time (sec)</label>
@@ -656,6 +657,7 @@ const GRID_BOTTOM = 1080 - 216;      // 864
 const GRID_W = GRID_RIGHT - GRID_LEFT;   // 648
 const GRID_H = GRID_BOTTOM - GRID_TOP;   // 648
 const GRID_CELL = GRID_W / 3;      
+const GRID_LINE_COUNT = 8; // 0..3 vertical (L->R), 4..7 horizontal (B->T)
 
 const $ = s => document.querySelector(s);
 const view = $("#view"); const ctx = view.getContext("2d");
@@ -687,6 +689,7 @@ let styleRuntime = {
 };
 
 let gridColor = "rgba(255,255,255,1)";
+let gridLineColors = null; // rgba[] length=GRID_LINE_COUNT
 /* ---------- 상태 ---------- */
 
 window.onerror = (msg, src, line, col, err) => {
@@ -977,6 +980,7 @@ function rgbaLerp(a,b,t){
 }
 
 function rgbaToCSS(c){ return `rgba(${c.r},${c.g},${c.b},${(c.a/255).toFixed(3)})`; }
+function cloneRGBA(c){ return rgba(c.r, c.g, c.b, c.a); }
 
 let styleEvents = []; // {tSec, color, fadeSec, target, index, _ref}
 function buildStyleSchedule(){
@@ -1060,6 +1064,12 @@ function currentGridRGBA(){
 function setGridColor(cRGBA){
   gridColor = rgbaToCSS(cRGBA);
 }
+function setGridLineColors(colors){
+  gridLineColors = Array.isArray(colors) ? colors : null;
+  const base = (gridLineColors && gridLineColors[0]) ? gridLineColors[0] : _styleBaseColor;
+  gridColor = rgbaToCSS(base);
+}
+
 
 function snapshotState(extra={}){
   const span = (viewEnd - viewStart);
@@ -1125,6 +1135,38 @@ function normalizeTempoMap(map, baseBpm){
   if (cleaned[0].beat === 0 && !(cleaned[0].bpm > 0)) cleaned[0].bpm = baseBpm;
   return cleaned;
 }
+function evalStyleGridColorsAt(t){
+  const colors = [];
+  for (let i = 0; i < GRID_LINE_COUNT; i++) colors.push(cloneRGBA(_styleBaseColor));
+  for (const ev of styleEvents){
+    if (ev.tSec > t) break;
+    const to   = parseHexColor(ev.color);
+    const dur  = Math.max(0, ev.fadeSec || 0);
+    const t0   = ev.tSec;
+    const t1   = t0 + dur;
+    const isLine = (ev.target === "grid-line");
+    if (isLine){
+      const idx = ev.index|0;
+      if (idx < 0 || idx >= GRID_LINE_COUNT) continue;
+      const from = colors[idx];
+      if (dur <= 1e-9 || t >= t1){
+        colors[idx] = cloneRGBA(to);
+      } else if (t >= t0){
+        colors[idx] = rgbaLerp(from, to, clamp01((t - t0) / dur));
+      }
+    } else {
+      const fromAll = colors[0] || _styleBaseColor;
+      if (dur <= 1e-9 || t >= t1){
+        for (let i = 0; i < GRID_LINE_COUNT; i++) colors[i] = cloneRGBA(to);
+      } else if (t >= t0){
+        const c = rgbaLerp(fromAll, to, clamp01((t - t0) / dur));
+        for (let i = 0; i < GRID_LINE_COUNT; i++) colors[i] = cloneRGBA(c);
+      }
+    }
+  }
+  return colors;
+}
+
 
 function normalizeTimeSigMap(map){
   const cleaned = (Array.isArray(map) ? map : [])
@@ -2597,33 +2639,40 @@ function strokeRectAbs(ctx, x0, y0, x1, y1, stroke="#2d3653", lineW=1){
 }
 
 function drawGridOverlay(){
-  // 런타임 그리드 색 (applyStyleEvents가 갱신)
-  const strokeMain = (typeof gridColor === "string" && gridColor.length) ? gridColor : "rgba(255,255,255,1)";
+  // ?? ???(??? ??? ?? applyStyleEvents? ??)
+  const fallback = (typeof gridColor === "string" && gridColor.length) ? gridColor : "rgba(255,255,255,1)";
+  const lineCss = (idx) => {
+    if (gridLineColors && gridLineColors[idx]) return rgbaToCSS(gridLineColors[idx]);
+    return fallback;
+  };
 
-  // ── 1) 외곽 테두리: 약한 글로우 + 메인 스트로크 두 겹
-  // 글로우
+  // 1) ??? ??
   ctx.save();
   ctx.globalAlpha = 0.22;
-  strokeRectAbs(ctx, GRID_LEFT, GRID_TOP, GRID_RIGHT, GRID_BOTTOM, strokeMain, 4);
-  ctx.restore();
-  // 메인
-  strokeRectAbs(ctx, GRID_LEFT, GRID_TOP, GRID_RIGHT, GRID_BOTTOM, strokeMain, 2);
-
-  // ── 2) 셀 경계선 (수직 2, 수평 2) : 메인색보다 살짝 옅게
-  ctx.save();
-  ctx.globalAlpha = 0.75;
-  for(let i=1;i<3;i++){
+  for (let i = 0; i < 4; i++){
     const x = GRID_LEFT + GRID_CELL * i;
-    drawLineAbs(ctx, {x, y:GRID_TOP}, {x, y:GRID_BOTTOM}, strokeMain, 1);
-    const y = GRID_TOP + GRID_CELL * i;
-    drawLineAbs(ctx, {x:GRID_LEFT, y}, {x:GRID_RIGHT, y}, strokeMain, 1);
+    drawLineAbs(ctx, {x, y:GRID_TOP}, {x, y:GRID_BOTTOM}, lineCss(i), 4);
+  }
+  for (let j = 0; j < 4; j++){
+    const y = GRID_TOP + GRID_CELL * j;
+    drawLineAbs(ctx, {x:GRID_LEFT, y}, {x:GRID_RIGHT, y}, lineCss(4 + j), 4);
   }
   ctx.restore();
 
-  // ── 3) 셀 라벨 (c,r) — (0,0)=왼아래 ~ (2,2)=오른위
+  // 2) ?? ????
+  for (let i = 0; i < 4; i++){
+    const x = GRID_LEFT + GRID_CELL * i;
+    drawLineAbs(ctx, {x, y:GRID_TOP}, {x, y:GRID_BOTTOM}, lineCss(i), 2);
+  }
+  for (let j = 0; j < 4; j++){
+    const y = GRID_TOP + GRID_CELL * j;
+    drawLineAbs(ctx, {x:GRID_LEFT, y}, {x:GRID_RIGHT, y}, lineCss(4 + j), 2);
+  }
+
+  // 3) ? ?? (c,r) ?? (0,0)=?? ~ (2,2)=??
   ctx.save();
   ctx.font = "12px system-ui, sans-serif";
-  ctx.fillStyle = "#9fb3d9";         // 고정 톤(가독성 유지)
+  ctx.fillStyle = "#9fb3d9";         // ?? ?(??? ??)
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   for(let r=0;r<3;r++){
@@ -2635,7 +2684,6 @@ function drawGridOverlay(){
   }
   ctx.restore();
 }
-
 
 function getSliderStartSec(n){
   return chartTimeToPlaybackSec({ sec: n.startTime, beat: n.startBeat });
@@ -4075,16 +4123,17 @@ audioFileInput.addEventListener("change", async (e)=>{
 let _styleBaseColor = rgba(255, 255, 255, 255); 
 function applyStyleEvents(nowSec){
   if (!Array.isArray(styleEvents) || styleEvents.length === 0){
-    setGridColor(_styleBaseColor);
-    _styleLastNow = nowSec;
+    setGridLineColors(evalStyleGridColorsAt(nowSec));
+    _lastStyleNow = nowSec;
     return;
   }
 
-  const c = evalStyleColorAt(nowSec);
-  setGridColor(c);
+  const colors = evalStyleGridColorsAt(nowSec);
+  setGridLineColors(colors);
 
-  _styleLastNow = nowSec;
+  _lastStyleNow = nowSec;
 }
+
 
 function blurNonTextFocus(){
   const ae = document.activeElement;
