@@ -422,6 +422,10 @@
 <div class="row"><label>Song Duration (sec)</label>
   <input id="durationSec" type="number" value="0" step="0.001">
 </div>
+<div class="row"><label>Circle Radius (px)</label>
+  <input id="circleRadius" type="number" value="100" step="1" min="1">
+</div>
+<div class="hint">CircleTap/Slider placement is clamped to center 4:3 (x:240~1680, y:0~1080) including this radius. Export writes this into each <code>*.chart.json</code> as <code>circleRadius</code>.</div>
 
     <div class="row"><label>Start Offset (sec)</label><input id="startOffsetSec" type="number" value="0" step="0.001"></div>
     <div class="row"><label>Start Offset (beats)</label><input id="startOffsetBeats" type="number" value="0" step="0.001"></div>
@@ -470,7 +474,7 @@
 
 
     <!-- [ADD] Circle/Slider/Bullet 시뮬 크기 설정 -->
-    <div class="row"><label>Circle Target (radius px)</label><input id="circleTargetRadius" type="number" step="1" value="100"></div> <!-- [ADD] -->
+    <div class="row"><label>Circle Target (radius px, linked)</label><input id="circleTargetRadius" type="number" step="1" value="100" min="1"></div> <!-- [ADD] -->
 
     </div><!-- /spawnSettings -->
 

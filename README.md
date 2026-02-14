@@ -17,7 +17,7 @@ The in-game 3x3 grid input is fixed: (0,0) is `Keypad1`/`Alpha1`/`Z`, (1,0) is `
 
 ### Add/Edit Note
 
-Note creation always starts by choosing a type in `noteType`. When a note is selected for editing, the editor shows `editBar` and `editLabel`, and the Save/Delete/Cancel buttons invoke `saveEdit()`, `deleteEdit()`, and `cancelEdit()`. Grid/Trail/Long notes use `cellCR` for the grid position and `judgeTimeSec`/`judgeBeat` for timing. Long notes also require `longDurSec` and `longDurBeats` and are created with `btnAddGrid`. CircleTap is defined by a position (`circlePos`) and a timing pair (`circleJudgeSec`/`circleJudgeBeat`), then added by `btnAddCircle`.
+Note creation always starts by choosing a type in `noteType`. When a note is selected for editing, the editor shows `editBar` and `editLabel`, and the Save/Delete/Cancel buttons invoke `saveEdit()`, `deleteEdit()`, and `cancelEdit()`. Grid/Trail/Long notes use `cellCR` for the grid position and `judgeTimeSec`/`judgeBeat` for timing. Long notes also require `longDurSec` and `longDurBeats` and are created with `btnAddGrid`. CircleTap is defined by a position (`circlePos`) and a timing pair (`circleJudgeSec`/`circleJudgeBeat`), then added by `btnAddCircle`. CircleTap/Slider positions are clamped to the center 4:3 play area (x `240~1680`, y `0~1080`) including `circleRadius`.
 
 Sliders are built from a start time (`sliderStartSec`/`sliderStartBeat`), a duration (`sliderDurSec`/`sliderDurBeats`), and a path; `sliderCurved` toggles bezier interpolation. The active point is addressed by `ptIndex` and edited with `ptXY`, while the list view (`sliderPointList`) and `pathCount` show the current path state. The path control buttons?`finishPath`, `clearPath`, `applyPointXY`, `insertPointAfter`, `removePoint`?respectively finalize, reset, apply input, insert after, and remove points. `btnAddSlider` pushes the final note.
 
@@ -31,11 +31,11 @@ Line(Style) events are used for grid color/line styling. You select the target w
 
 ### Chart Settings
 
-The chart panel is toggled by `chartToggle` and edited inside `chartSettings`. Audio linkage uses `fmodEvent`, and metadata uses `title`, `bpm`, `artist`, `previewStart`, `previewDuration`, `tags`, and `coverFile`. Tempo and time signatures are configured via `tempoMapEnabled`, `tempoAddBtn`, `tempoMapList`, `timeSigMapEnabled`, `timeSigAddBtn`, and `timeSigMapList`. Time mode is selected with `timeMode` (Seconds/Beats), start offsets with `startOffsetSec`/`startOffsetBeats`, and explicit duration with `durationSec`.
+The chart panel is toggled by `chartToggle` and edited inside `chartSettings`. Audio linkage uses `fmodEvent`, and metadata uses `title`, `bpm`, `artist`, `previewStart`, `previewDuration`, `tags`, and `coverFile`. Tempo and time signatures are configured via `tempoMapEnabled`, `tempoAddBtn`, `tempoMapList`, `timeSigMapEnabled`, `timeSigAddBtn`, and `timeSigMapList`. Time mode is selected with `timeMode` (Seconds/Beats), start offsets with `startOffsetSec`/`startOffsetBeats`, and explicit duration with `durationSec`. `circleRadius` is a song-level radius used for editor clamp/preview and is exported to `song.json`.
 
 ### Spawn Calc Settings
 
-Spawn timing uses `spawnToggle` and the fields under `spawnSettings`. Leads are `circleLead`/`circleLeadBeats` and `sliderLead`/`sliderLeadBeats`. Grid growth is defined by `gridTarget`, `gridGrow`, and `gridGrowUnit`, while target mode uses `gridTargetMode`. Bullet size is `bulletSize` and circle target radius is `circleTargetRadius`.
+Spawn timing uses `spawnToggle` and the fields under `spawnSettings`. Leads are `circleLead`/`circleLeadBeats` and `sliderLead`/`sliderLeadBeats`. Grid growth is defined by `gridTarget`, `gridGrow`, and `gridGrowUnit`, while target mode uses `gridTargetMode`. Bullet size is `bulletSize` and circle target radius is `circleTargetRadius` (linked with `circleRadius`).
 
 ### Audio/Waveform
 
@@ -55,7 +55,7 @@ Exports are `downloadJSON()` for JSON and `exportSongZip()` for a song folder ZI
 
 ## Export Output (song.json)
 
-`exportSongZip()` produces `charts/Normal.chart.json` and `song.json`. The `song.json` payload includes `title`, `artist`, `bpm`, `tempoMapEnabled`, `tempoMap`, `timeSigMapEnabled`, `timeSigMap`, `previewStart`, `previewDuration`, `coverImage`, `bgVideo`, `fmodEvent`, `durationSec`, `difficulties` (name/path/level), and `tags`.
+`exportSongZip()` produces `charts/Normal.chart.json` and `song.json`. The `song.json` payload includes `title`, `artist`, `bpm`, `circleRadius`, `tempoMapEnabled`, `tempoMap`, `timeSigMapEnabled`, `timeSigMap`, `previewStart`, `previewDuration`, `coverImage`, `bgVideo`, `fmodEvent`, `durationSec`, `difficulties` (name/path/level), and `tags`.
 
 ## In-Game Schema (LevelChartData)
 
