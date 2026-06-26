@@ -31,7 +31,7 @@ Line(Style) events are used for grid color/line styling. You select the target w
 
 ### Chart Settings
 
-The chart panel is toggled by `chartToggle` and edited inside `chartSettings`. Audio linkage uses `fmodEvent`, and metadata uses `title`, `bpm`, `artist`, `previewStart`, `previewDuration`, `tags`, and `coverFile`. Tempo and time signatures are configured via `tempoMapEnabled`, `tempoAddBtn`, `tempoMapList`, `timeSigMapEnabled`, `timeSigAddBtn`, and `timeSigMapList`. Time mode is selected with `timeMode` (Seconds/Beats), start offsets with `startOffsetSec`/`startOffsetBeats`, and explicit duration with `durationSec`. `circleRadius` is a song-level radius used for editor clamp/preview and is exported to `song.json`.
+The chart panel is toggled by `chartToggle` and edited inside `chartSettings`. Metadata uses `title`, `bpm`, `artist`, `previewStart`, `previewDuration`, `tags`, `coverFile`, and the selected `audioFile`. Tempo and time signatures are configured via `tempoMapEnabled`, `tempoAddBtn`, `tempoMapList`, `timeSigMapEnabled`, `timeSigAddBtn`, and `timeSigMapList`. Time mode is selected with `timeMode` (Seconds/Beats), start offsets with `startOffsetSec`/`startOffsetBeats`, and explicit duration with `durationSec`. `circleRadius` is a song-level radius used for editor clamp/preview and is exported to `song.json`.
 
 ### Spawn Calc Settings
 
@@ -55,7 +55,7 @@ Exports are `downloadJSON()` for JSON and `exportSongZip()` for a song folder ZI
 
 ## Export Output (song.json)
 
-`exportSongZip()` produces `charts/Normal.chart.json` and `song.json`. The `song.json` payload includes `title`, `artist`, `bpm`, `circleRadius`, `tempoMapEnabled`, `tempoMap`, `timeSigMapEnabled`, `timeSigMap`, `previewStart`, `previewDuration`, `coverImage`, `bgVideo`, `fmodEvent`, `durationSec`, `difficulties` (name/path/level), and `tags`.
+`exportSongZip()` produces `charts/Normal.chart.json`, `song.json`, and the selected audio file in the song folder root. The `song.json` payload includes `title`, `artist`, `bpm`, `circleRadius`, `tempoMapEnabled`, `tempoMap`, `timeSigMapEnabled`, `timeSigMap`, `previewStart`, `previewDuration`, `coverImage`, `bgVideo`, `audioFile`, `durationSec`, `difficulties` (name/path/level), and `tags`.
 
 ## In-Game Schema (LevelChartData)
 
