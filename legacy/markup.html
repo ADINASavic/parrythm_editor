@@ -396,6 +396,23 @@
 
         <h3 style="margin:4px 0 8px">Chart <button id="chartToggle" class="mini" style="margin-left:8px;padding:2px 6px">▾</button></h3>
       <div id="chartSettings">
+      <div class="row"><label>Song Folder</label><input id="songFolder" type="file" webkitdirectory directory multiple></div>
+      <div class="row" id="autosaveBar" style="display:none;gap:6px">
+        <span id="autosaveBarText" class="pill"></span>
+        <button id="autosaveRestoreBtn" type="button">Restore</button>
+        <button id="autosaveDiscardBtn" type="button" class="bad">Discard</button>
+      </div>
+      <div class="hint" id="autosaveStatus"></div>
+      <div class="row"><label>Difficulty</label>
+        <select id="difficultySelect" disabled><option>(no song folder)</option></select>
+        <button id="difficultyAddBtn" type="button">Add</button>
+        <button id="difficultyRemoveBtn" type="button" class="bad">Remove</button>
+      </div>
+      <div class="hint">Renaming a difficulty renames its chart file — the old one stays in the folder.</div>
+      <div class="row"><label>Difficulty Name</label><input id="difficultyName" type="text" value="Normal"></div>
+      <div class="row"><label>Difficulty Level</label><input id="difficultyLevel" type="number" value="1" step="1" min="1"></div>
+      <div class="row"><label>Charter</label><input id="charter" type="text" value="" placeholder="Chart author credit"></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
       <div class="row"><label>Title</label><input id="title" type="text" value="New Chart"></div>
     <div class="row"><label>Fixed BPM (Game)</label><input id="bpm" type="number" value="120" step="0.01"></div>
     <div class="row">
