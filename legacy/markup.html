@@ -36,12 +36,27 @@
 
     <!-- Circle -->
     <div id="circleInputs" style="display:none">
-      <div class="hint">Absolute 캔버스를 클릭해 좌표를 잡을 수 있습니다. (1920×1080)</div>
+      <div class="hint">Absolute 캔버스를 클릭하면 그 자리에 바로 노트가 생깁니다. (1920×1080)</div>
       <div class="row"><label>Pos (x,y)</label><input id="circlePos" type="text" value="960,540"></div>
       <div class="row"><label>Time (sec)</label><input id="circleJudgeSec" type="number" step="0.001" value="1.000"></div>
       <div class="row"><label>Time (beats)</label><input id="circleJudgeBeat" type="number" step="0.001" value="1.000"></div>
       <div class="row"><label class="mini"><input id="circleTrail" type="checkbox"> Trail</label></div>
+      <div class="row"><label class="mini"><input id="circleAdvanceTime" type="checkbox"> 찍을 때마다 재생막대를 스냅 한 칸 뒤로</label></div>
       <button id="btnAddCircle" class="primary" onclick="addCircle()">Add CircleTap</button>
+    </div>
+
+    <!-- [PLACEMENT SNAP] CircleTap / Slider 공용 -->
+    <div id="snapInputs" style="display:none">
+      <div class="row"><label>Snap</label>
+        <select id="snapMode">
+          <option value="off">Off</option>
+          <option value="distance">Distance (방향은 마우스)</option>
+          <option value="direction">Direction (직전 방향 유지)</option>
+        </select>
+      </div>
+      <div class="row"><label>Snap Distance</label><input id="snapDist" type="number" value="216" step="1"></div>
+      <div class="row"><label>Angle Step (deg)</label><input id="snapAngle" type="number" value="15" step="1" min="0"></div>
+      <div class="hint">직전 지점을 기준으로 간격을 고정합니다. CircleTap은 직전 노트, Slider는 직전 경로 점이 기준입니다. Angle Step이 0이면 각도 스냅을 끕니다.</div>
     </div>
 
     <!-- Slider -->
@@ -157,10 +172,15 @@
       <div class="row"><label>Grid Spacing Y</label><input id="spGridSpaceY" type="number" value="120" step="1"></div>
       <div class="row"><label>Line Length</label><input id="spLineLength" type="number" value="320" step="1"></div>
       <div class="row"><label>Line Points (x,y;...)</label><input id="spLinePoints" type="text" value=""></div>
+      <div class="row" id="spLinePickRow">
+        <button id="spLinePickBtn" onclick="setLinePickTarget('sp')">Pick Points</button>
+        <button onclick="clearLinePoints('sp')">Clear Path</button>
+      </div>
       <div class="row"><label>Burst Radius</label><input id="spBurstRadius" type="number" value="220" step="1"></div>
       <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
       <div class="row"><label>Dock Pattern</label>
         <select id="spDockPattern">
+          <option value="slider">Slider Path</option>
           <option value="ring">Ring</option>
           <option value="arc">Arc</option>
           <option value="spiral">Spiral</option>
@@ -189,11 +209,29 @@
       <div class="row"><label>Dock Grid Spacing Y</label><input id="spDockGridSpaceY" type="number" value="0" step="1"></div>
       <div class="row"><label>Dock Line Length</label><input id="spDockLineLength" type="number" value="0" step="1"></div>
       <div class="row"><label>Dock Line Points (x,y;...)</label><input id="spDockLinePoints" type="text" value=""></div>
+      <div class="row" id="spDockLinePickRow">
+        <button id="spDockLinePickBtn" onclick="setLinePickTarget('spDock')">Pick Points</button>
+        <button onclick="clearLinePoints('spDock')">Clear Path</button>
+      </div>
       <div class="row"><label>Dock Burst Radius</label><input id="spDockBurstRadius" type="number" value="0" step="1"></div>
+
+      <!-- Slider Path 공용 설정: dock이 경로 위에 놓이는 점이라 여기 둠 -->
+      <div id="spSliderShared">
+        <div class="row"><label>Slider Path Target</label><select id="spSliderTarget"></select></div>
+        <div class="row" id="spSliderPickRow">
+          <button id="spSliderPickBtn" onclick="setSliderPickArmed()">Pick on Wave</button>
+          <span class="hint" id="spSliderPickHint">음파 패널에서 슬라이더를 클릭</span>
+        </div>
+        <div class="row"><label>Slider Progress Start</label><input id="spSliderProgStart" type="number" value="0" step="0.01" min="0" max="1"></div>
+        <div class="row"><label>Slider Progress End</label><input id="spSliderProgEnd" type="number" value="1" step="0.01" min="0" max="1"></div>
+        <label class="mini"><input id="spSliderSyncTiming" type="checkbox" checked> 타이밍을 슬라이더 진행에 맞춤 (Start/Step 무시)</label>
+        <div class="hint">Dock만 슬라이더에 붙습니다. Spawn/Despawn 좌표는 각자 패턴으로 독립해서 정합니다.</div>
+      </div>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
       <div class="row"><label>Despawn Pattern</label>
         <select id="spDespawnPattern">
+          <option value="continue">Continue (Spawn→Dock 직진)</option>
           <option value="ring">Ring</option>
           <option value="arc">Arc</option>
           <option value="spiral">Spiral</option>
@@ -222,7 +260,12 @@
       <div class="row"><label>Despawn Grid Spacing Y</label><input id="spDespawnGridSpaceY" type="number" value="0" step="1"></div>
       <div class="row"><label>Despawn Line Length</label><input id="spDespawnLineLength" type="number" value="0" step="1"></div>
       <div class="row"><label>Despawn Line Points (x,y;...)</label><input id="spDespawnLinePoints" type="text" value=""></div>
+      <div class="row" id="spDespawnLinePickRow">
+        <button id="spDespawnLinePickBtn" onclick="setLinePickTarget('spDespawn')">Pick Points</button>
+        <button onclick="clearLinePoints('spDespawn')">Clear Path</button>
+      </div>
       <div class="row"><label>Despawn Burst Radius</label><input id="spDespawnBurstRadius" type="number" value="0" step="1"></div>
+      <div class="row"><label>Continue Margin (px)</label><input id="spDespawnContinueMargin" type="number" value="240" step="10"></div>
 
       <div class="row"><label>Start (sec)</label><input id="spStartSec" type="number" step="0.001" value="3.000"></div>
       <div class="row"><label>Start (beats)</label><input id="spStartBeat" type="number" step="0.001" value="3.000"></div>

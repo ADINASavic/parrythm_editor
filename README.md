@@ -45,35 +45,74 @@ previous point and lets the mouse choose direction (optionally quantised by Angl
 CircleTap anchors on the previously placed note; Slider anchors on the previous point of the path
 currently being drawn.
 
-Slider paths are built by clicking the canvas repeatedly and then confirmed from the left
-inspector with `Add Slider`; `Path pts` shows the current count.
+A CircleTap is one point, so a canvas click places the note immediately — no confirm step. The
+`Add CircleTap` button stays for placing at a typed `Pos` instead, and while a note is open for
+editing a click only moves its position. `찍을 때마다 재생막대를 스냅 한 칸 뒤로` then advances the
+playhead by one snap subdivision after each placement — the same step `Arrow Right` uses, so it
+follows the Snap/Subdiv setting rather than a separate amount. Placing and stepping stay in sync
+because both go through `seekBySubdivision`. A slider has no fixed point count, so its path is built by
+clicking the canvas repeatedly and then confirmed from the left inspector with `Add Slider`;
+`Path pts` shows the current count.
 
-### Special Bullet — Line (Click)
+### Special Bullet — Line, picked on the canvas
 
-Setting any of the three pattern dropdowns to `Line (Click)` lets you define that line by clicking
-the canvas twice instead of typing centre/length/angle. `Line Click Target` chooses which of
-Spawn / Dock / Despawn the next two clicks apply to, and each line's endpoints are listed in the
-inspector. Bullets are then spread evenly along whichever lines are set, so bullet `i` takes the
-same normalised position on all three.
+The `Line` pattern spreads bullets along the polyline in `Line Points` **by arc length**, so bullet
+`i` takes the same normalised position on every path regardless of where the corners fall. That
+field is the single source of truth and stays hand-editable; `Pick Points` just fills it from the
+canvas.
 
-The second click of a line obeys the same Snap settings as Slider and CircleTap. Lines are drawn on
-the canvas in Spawn green / Dock amber / Despawn red, with the active target thickened. `Clear This
-Line` resets the current target, `Clear All Lines` resets all three. Clicking again once a line
-already has two points starts that line over.
+Each of Spawn / Dock / Despawn owns its own `Pick Points` and `Clear Path` buttons, shown only while
+that panel's pattern is `Line`. `Pick Points` arms the panel — every canvas click then appends one
+point to its `Line Points` — and pressing it again disarms. Only one panel is armed at a time, so
+picking Dock is just a matter of pressing Dock's button. **Canvas clicks are ignored unless a panel
+is armed**, and switching an armed panel away from `Line` disarms it automatically.
+
+A path takes any number of points, so an L or a zigzag works, not just a straight segment. Every
+click after the first obeys the same Snap settings as Slider and CircleTap. Paths are drawn on the
+canvas in Spawn green / Dock amber / Despawn red, with the armed panel thickened.
 
 ### Special Bullet — Slider Path
 
-Setting a pattern dropdown to `Slider Path` places that point along an existing slider's path.
-`Slider Path Target` picks the slider and `Slider Progress Start/End` sets the span the batch
-covers, so bullet `i` sits at an evenly spaced progress along it. Each of Spawn / Dock / Despawn
-has its own `Slider Offset`, a distance along the path normal — leave Dock at 0 and give
-Spawn/Despawn opposite signs to make bullets cross the slider. `Slider Offset 좌우 교대` flips the
-sign on alternating bullets.
+`Slider Path` is a **dock-only** pattern — it appears in the Dock dropdown and nowhere else. It
+means "these bullets dock onto that slider": the dock position comes from the path and, with
+`타이밍을 슬라이더 진행에 맞춤`, the dock time comes from when the player reaches that progress.
+Spawn and despawn coordinates stay completely independent, set by whatever pattern their own panels
+use. Its settings live in the Dock panel and appear when the dock pattern is `Slider Path`.
 
-With `타이밍을 슬라이더 진행에 맞춤` enabled (default), Start/Step are ignored and each bullet's
-spawn time is derived from when the player actually reaches that point
-(`slider start + duration × progress − ToDock`). Because sliders render in `Round` mode, the docks
+`Slider Path Target` picks the slider. Rather than hunting through the dropdown, press
+`Pick on Wave` and click the slider's block in the waveform panel; that selects it and disarms. A
+click on anything that is not a slider says so and leaves picking armed, and while armed a wave
+click never opens the note editor. Unarmed, wave clicks behave normally.
+
+`Slider Progress Start/End` sets the span the batch covers, so bullet `i` docks at an evenly spaced
+progress along it. It defaults to the whole path, 0 → 1.
+
+The path sampled is the **same curve the slider itself draws** — `buildPath(points, sliderCurved,
+CurveMode.ROUND)`. On a curved slider the dock therefore follows the rounded B-spline, not the raw
+control polyline; on a sharp corner the two differ by well over 100px.
+
+Everything except dock is kept clear of the path automatically. Any spawn or despawn point closer
+than the circle radius (`chart.circleRadius`, the reflect hit radius) is pushed straight out to
+exactly that distance, re-checked a few times since one push can move a point near a different
+segment. Dock is never moved — it is supposed to be on the path.
+
+### Special Bullet — Despawn `Continue`
+
+The despawn dropdown has one extra pattern the others don't: `Continue (Spawn→Dock 직진)`. Instead
+of a shape of its own, it takes the spawn→dock direction and carries straight on until the bullet
+leaves the screen, so the bullet never bends at dock. `Continue Margin (px)` is how far past the
+1920×1080 edge the despawn point lands. It uses the spawn position *after* clearance has been
+applied, so the preview and the generated notes stay identical.
+
+With `타이밍을 슬라이더 진행에 맞춤` enabled (default), the `Start`/`Step` fields are ignored — the
+batch is anchored to the slider instead of to its own start time. Each bullet's dock time is
+`slider start + duration × progress` and its spawn time is that minus `ToDock`, so the bullet lands
+exactly when the player's head reaches that point. Because sliders render in `Round` mode, the docks
 land on the real runtime path rather than on the authored control points.
+
+The slider's start and duration are resolved the same way `ChartTimeLineRuntime.StartSec/DurSec`
+does: seconds fields in Seconds mode, `startBeat`/`durationBeats` in Beats mode. Reading the seconds
+fields in Beats mode would be wrong — they are not kept in sync there.
 
 
 The editor is designed around keyboard-first editing. You can open and close the Quick Guide overlay with `?` or `Shift+/`, and dismiss it with `Esc`. Playback toggles with `Space`, while `Arrow Left/Right` seeks by the current snap unit. Editing history follows standard conventions: `Ctrl+Z` for undo and `Ctrl+Shift+Z` or `Ctrl+Y` for redo. Range copy/paste uses `Ctrl/Cmd+C` and `Ctrl/Cmd+V`. For grid selection, `Numpad1~9` picks a 3x3 cell and `Numpad+` cycles the next cell; `Numpad0` immediately adds a note for the active Type (Grid/Trail/Long). Slider point editing is intended to be quick: arrow keys nudge by 5px, `Shift`+Arrow nudges by 20px, `PageUp/PageDown` moves the selected point, and `Enter` applies the `ptXY` input. Line(Style) events can be added with `Enter` while focus is in the Line inputs, and anywhere with `Ctrl/Cmd+Enter`. Mouse gestures focus on timeline editing: click the waveform to seek/set time, drag to pan, `Shift`+drag to select a range, and `Ctrl`+wheel to zoom. Clicking a waveform note enters edit mode; `Ctrl/Cmd` click toggles selection and `Shift` click extends a range.
