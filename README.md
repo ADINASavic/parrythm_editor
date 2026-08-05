@@ -7,6 +7,75 @@ This document explains how the web-based editor behaves and how its data maps to
 
 ## Shortcuts and Input
 
+### Keyboard-only charting
+
+Mode keys switch the active note Type without touching the dropdown:
+
+| Key | Type |
+|---|---|
+| `G` | Grid |
+| `T` | Trail |
+| `Y` | Long |
+| `R` | Slider |
+| `F` | CircleTap |
+
+Cell keys place a note in one keystroke, laid out exactly like the in-game 3x3 grid:
+
+```
+Q W E   →  (0,2) (1,2) (2,2)
+A S D   →  (0,1) (1,1) (2,1)
+Z X C   →  (0,0) (1,0) (2,0)
+```
+
+Long notes are placed with two presses. The first marks a start for that cell and the cell turns
+amber with a `LONG` badge; the waveform also shows a dashed marker (or an edge arrow when the start
+is scrolled off screen). The **next note placed in that same cell** becomes the end and is absorbed
+into the Long. Pending state is per cell, so other cells stay free. Placing the end earlier than the
+start swaps the two. Pending Longs that are never closed are simply discarded — they never reach the
+saved chart. `Ctrl+Z` on a closed Long returns it to pending.
+
+All of the above are ignored while a text field has focus, and any modifier (`Ctrl`/`Cmd`/`Alt`)
+falls through to the existing shortcuts.
+
+### Placement snap (CircleTap / Slider)
+
+With Type set to CircleTap or Slider, a Snap panel appears. `Distance` fixes the gap from the
+previous point and lets the mouse choose direction (optionally quantised by Angle Step);
+`Direction` also reuses the previous two points' heading, so the mouse position is ignored.
+CircleTap anchors on the previously placed note; Slider anchors on the previous point of the path
+currently being drawn.
+
+Slider paths are built by clicking the canvas repeatedly and then confirmed from the left
+inspector with `Add Slider`; `Path pts` shows the current count.
+
+### Special Bullet — Line (Click)
+
+Setting any of the three pattern dropdowns to `Line (Click)` lets you define that line by clicking
+the canvas twice instead of typing centre/length/angle. `Line Click Target` chooses which of
+Spawn / Dock / Despawn the next two clicks apply to, and each line's endpoints are listed in the
+inspector. Bullets are then spread evenly along whichever lines are set, so bullet `i` takes the
+same normalised position on all three.
+
+The second click of a line obeys the same Snap settings as Slider and CircleTap. Lines are drawn on
+the canvas in Spawn green / Dock amber / Despawn red, with the active target thickened. `Clear This
+Line` resets the current target, `Clear All Lines` resets all three. Clicking again once a line
+already has two points starts that line over.
+
+### Special Bullet — Slider Path
+
+Setting a pattern dropdown to `Slider Path` places that point along an existing slider's path.
+`Slider Path Target` picks the slider and `Slider Progress Start/End` sets the span the batch
+covers, so bullet `i` sits at an evenly spaced progress along it. Each of Spawn / Dock / Despawn
+has its own `Slider Offset`, a distance along the path normal — leave Dock at 0 and give
+Spawn/Despawn opposite signs to make bullets cross the slider. `Slider Offset 좌우 교대` flips the
+sign on alternating bullets.
+
+With `타이밍을 슬라이더 진행에 맞춤` enabled (default), Start/Step are ignored and each bullet's
+spawn time is derived from when the player actually reaches that point
+(`slider start + duration × progress − ToDock`). Because sliders render in `Round` mode, the docks
+land on the real runtime path rather than on the authored control points.
+
+
 The editor is designed around keyboard-first editing. You can open and close the Quick Guide overlay with `?` or `Shift+/`, and dismiss it with `Esc`. Playback toggles with `Space`, while `Arrow Left/Right` seeks by the current snap unit. Editing history follows standard conventions: `Ctrl+Z` for undo and `Ctrl+Shift+Z` or `Ctrl+Y` for redo. Range copy/paste uses `Ctrl/Cmd+C` and `Ctrl/Cmd+V`. For grid selection, `Numpad1~9` picks a 3x3 cell and `Numpad+` cycles the next cell; `Numpad0` immediately adds a note for the active Type (Grid/Trail/Long). Slider point editing is intended to be quick: arrow keys nudge by 5px, `Shift`+Arrow nudges by 20px, `PageUp/PageDown` moves the selected point, and `Enter` applies the `ptXY` input. Line(Style) events can be added with `Enter` while focus is in the Line inputs, and anywhere with `Ctrl/Cmd+Enter`. Mouse gestures focus on timeline editing: click the waveform to seek/set time, drag to pan, `Shift`+drag to select a range, and `Ctrl`+wheel to zoom. Clicking a waveform note enters edit mode; `Ctrl/Cmd` click toggles selection and `Shift` click extends a range.
 
 ## In-Game Key Mapping (3x3 Grid)
