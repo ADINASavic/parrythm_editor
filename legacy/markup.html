@@ -86,7 +86,7 @@
         <label>Points</label>
         <div style="flex:1">
             <div id="sliderPointList"
-                style="max-height:160px;overflow:auto;border:1px solid #2d3653;border-radius:8px;padding:6px;font-size:12px"></div>
+                style="max-height:160px;overflow:auto;border:2px solid var(--edge);border-radius:0;background:#fff;padding:6px;font-size:12px"></div>
             <div style="display:flex;gap:6px;margin-top:6px">
             <button type="button" id="ptPrevBtn">Prev (PgUp)</button>
             <button type="button" id="ptNextBtn">Next (PgDn)</button>
@@ -110,6 +110,13 @@
       <div class="row"><label>ToDock (beats)</label><input id="bulletToDockBeats" type="number" step="0.001" value="1.000"></div>
       <div class="row"><label>DockToDespawn (sec)</label><input id="bulletDockToDespawnSec" type="number" step="0.001" value="1.000"></div>
       <div class="row"><label>DockToDespawn (beats)</label><input id="bulletDockToDespawnBeats" type="number" step="0.001" value="1.000"></div>
+      <div class="row"><label>Placement</label>
+        <select id="bulletPlaceMode">
+          <option value="linear">2-Click 직선 (방향 → Dock)</option>
+          <option value="3click">3-Click (Spawn→Dock→Despawn)</option>
+          <option value="manual">Manual (클릭 타겟)</option>
+        </select>
+      </div>
       <div class="row"><label>Canvas click target</label>
         <select id="bulletClickTarget">
           <option value="spawn">Spawn</option>
@@ -122,10 +129,6 @@
     <input id="bulletCurved" type="checkbox">
     Curve (Bezier)
   </label>
-        <label class="mini">
-          <input id="bullet3Click" type="checkbox" checked>
-          3-Click 배치 (Spawn→Dock→Despawn)
-        </label>
         <label class="mini" style="margin-left:12px">
           <input id="bulletAutoAdd" type="checkbox">
           3점 완료 시 자동 Add
@@ -135,7 +138,7 @@
         <span id="bulletStageLabel">Stage: Spawn을 클릭하세요</span>
       </div>
       <button id="btnAddBullet" class="primary" onclick="addBullet()">Add Bullet</button>
-      <div class="hint">Absolute 캔버스 클릭으로 선택된 target 좌표를 세팅할 수 있습니다.</div>
+      <div class="hint">2-Click 직선: 날아오는 방향 → 슬라이더에 닿는 지점 순서로 찍으면 재생 커서 시각을 Dock 타이밍으로 잡고 Spawn/Despawn과 시간을 Bullet Speed로 계산합니다.</div>
           </div>
 
     <!-- Special Bullet -->
@@ -526,6 +529,11 @@
   <input id="bulletSize" type="number" step="1" value="64">
 </div>
 
+<div class="row"><label>Bullet Speed (px/sec)</label>
+  <input id="bulletSpeed" type="number" step="1" min="1" value="768">
+</div>
+<div class="hint">2-Click 직선 배치가 이 속도로 화면 밖 Spawn/Despawn과 구간 시간을 계산합니다. 난이도별로 <code>*.chart.json</code>에 <code>bulletSpeed</code>로 저장됩니다.</div>
+
 
 
     <!-- [ADD] Circle/Slider/Bullet 시뮬 크기 설정 -->
@@ -569,8 +577,8 @@
           width="440"
           height="360"
           style="
-            border:1px solid #26304a;
-            border-radius:8px;
+            border:2px solid var(--edge);
+            border-radius:0;
             background:#0b1020;
           ">
         </canvas>
@@ -582,9 +590,10 @@
             style="
               overflow:auto;
               padding:8px;
-              background:rgba(10,14,22,0.95);
-              border:1px solid #26304a;
-              border-radius:8px;
+              background:#fff;
+              border:2px solid var(--edge);
+              border-radius:0;
+              box-shadow:var(--hard);
               font-size:12px;
             ">
 
