@@ -7,16 +7,15 @@
     <div class="row"><label>Type</label>
       <select id="noteType">
         <option value="Grid">Grid</option>
-        <option value="Trail">Trail</option>
         <option value="Long">Long</option>
         <option value="CircleTap">CircleTap</option>
         <option value="Slider">Slider</option>
         <option value="Bullet">Bullet</option>
         <option value="SpecialBullet">Special Bullet</option>
         <option value="Camera">Camera</option>
-        <option value="Line">Line</option>
         <option value="Voice">Voice</option>
         <option value="Image">Image</option>
+        <option value="Line">Line</option>
       </select>
     </div>
 
@@ -24,6 +23,7 @@
     <div id="gridInputs">
       <div class="hint">오른쪽 3x3 Grid를 클릭해도 설정됩니다.</div>
       <div class="row"><label>Cell (c,r)</label><input id="cellCR" type="text" value="1,1"></div>
+      <div class="row" id="gridTrailRow"><label class="mini"><input id="gridTrail" type="checkbox"> Trail</label></div>
       <div class="row"><label>Time (sec)</label><input id="judgeTimeSec" type="number" step="0.001" value="1.000"></div>
       <div class="row"><label>Time (beats)</label><input id="judgeBeat" type="number" step="0.001" value="1.000"></div>
       <div id="longInputs" style="display:none">
@@ -642,15 +642,14 @@
       <label class="mini">Wave Note
         <select id="waveNoteType">
           <option value="Grid">Grid</option>
-          <option value="Trail">Trail</option>
           <option value="Long">Long</option>
           <option value="CircleTap">CircleTap</option>
           <option value="Slider">Slider</option>
           <option value="Bullet">Bullet</option>
           <option value="Camera">Camera</option>
-          <option value="Line">Line</option>
           <option value="Voice">Voice</option>
           <option value="Image">Image</option>
+          <option value="Line">Line</option>
         </select>
       </label>
       <label class="mini">Speed
@@ -706,16 +705,15 @@
       <select id="noteFilterType">
         <option value="all">All Types</option>
         <option value="Grid">Grid</option>
-        <option value="Trail">Trail</option>
         <option value="Long">Long</option>
         <option value="CircleTap">CircleTap</option>
         <option value="Slider">Slider</option>
         <option value="Bullet">Bullet</option>
         <option value="SpecialBullet">Special Bullet</option>
         <option value="Camera">Camera</option>
-        <option value="Line">Line</option>
         <option value="Voice">Voice</option>
         <option value="Image">Image</option>
+        <option value="Line">Line</option>
       </select>
     </div>
 
